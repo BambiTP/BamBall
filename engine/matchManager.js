@@ -1,0 +1,595 @@
+const { validateSettings } = (typeof require === 'function') ? require('./matchSettings') : globalThis.MatchSettings;
+const { SCHEMA, SCHEMA_BY_KEY, coerce, applyPartial } = (typeof require === 'function') ? require('./settingsSchema') : globalThis.SettingsSchema;
+
+const STEP_MS = 1000 / 60;
+
+const PHYSICS_ENTRIES = SCHEMA.filter(e => e.scope === 'physics');
+const MATCH_ENTRIES    = SCHEMA.filter(e => e.scope === 'match');
+const PLAYER_KEYS      = PHYSICS_ENTRIES.filter(e => e.playerScoped).map(e => e.key);
+const TILE_KEYS        = PHYSICS_ENTRIES.filter(e => e.tileScoped).map(e => e.key);
+
+// Purely a display grouping for the client's Group Settings panel, derived
+// from each entry's `category` field - a new schema entry with a category
+// automatically lands in the right bucket, no separate table to keep in
+// sync.
+function buildCategories(entries) {
+  const categories = {};
+  for (const entry of entries) {
+    if (!entry.category) continue;
+    (categories[entry.category] ??= []).push(entry.key);
+  }
+  return categories;
+}
+
+const PHYSICS_CATEGORIES = buildCategories(PHYSICS_ENTRIES);
+
+// Client-relevant metadata only - never leaks server-only fields like
+// `hooks`.
+// The schema fields the client's settings UIs are built from. tileScoped/
+// tileCategories drive the per-tile settings panel (which keys show for
+// which tile), and nullable drives the "empty field = clear/unlimited"
+// input handling - omitting them here silently broke both client-side,
+// since the client sees only this meta, never settingsSchema.js itself.
+function schemaMeta(entries) {
+  return entries.map(({ key, type, options, category, scale, unit, nullable, tileScoped, tileCategories }) =>
+    ({ key, type, options, category, scale, unit, nullable, tileScoped, tileCategories }));
+}
+
+var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, emitter, physicsLookup) {
+
+  // Snapshot of every physics value at the moment this match started, before
+  // any updatePhysics() call has had a chance to mutate `config` - the only
+  // way the client can show "changed from default" without duplicating
+  // gameConfig.js's literals.
+  const physicsDefaults = { ...config };
+
+  function getPhysicsDefaults() {
+    return physicsDefaults;
+  }
+
+  function getPhysicsCategories() {
+    return PHYSICS_CATEGORIES;
+  }
+
+  function getPhysicsSchemaMeta() {
+    return schemaMeta(PHYSICS_ENTRIES);
+  }
+
+  function getMatchSchemaMeta() {
+    return schemaMeta(MATCH_ENTRIES);
+  }
+
+  function elapsedMs() {
+    return (gameState.stepCount - gameState.phaseStartStep) * STEP_MS;
+  }
+
+  function freezeAll(frozen) {
+    for (const player of gameState.players) {
+      player.matchFrozen = frozen;
+    }
+  }
+
+  function respawnAll() {
+    for (const player of gameState.players) {
+      gameHelpers.respawnPlayer(player);
+    }
+  }
+
+  // The tick loop keeps stepping physics even in the 'ended' state, so
+  // without this everyone just keeps drifting/bouncing on whatever
+  // momentum they had the instant the match ended.
+  function stopAllMomentum() {
+    for (const player of gameState.players) {
+      if (!player.body) continue;
+      physicsWorld.setVelocity(player.body, 0, 0);
+      player.body.SetAngularVelocity(0);
+      player.lx = 0;
+      player.ly = 0;
+    }
+  }
+
+  // Restores every tile that drifted from the freshly loaded map (taken
+  // flags, used boosts/bombs, consumed powerups, toggled gates). Emitting
+  // 'setTile' both rebuilds the server body and broadcasts to clients.
+  function resetTiles() {
+    const initial = gameState.initialMap;
+    if (!initial) return;
+
+    for (let y = 0; y < initial.length; y++) {
+      for (let x = 0; x < initial[y].length; x++) {
+        if (gameState.map[y]?.[x] !== initial[y][x]) {
+          emitter.emit('setTile', x, y, initial[y][x]);
+        }
+      }
+    }
+  }
+
+  // Puts every map element back to its loaded state: cancels all pending
+  // tile timers (boost/bomb cooldowns, powerup respawns, gate sticky
+  // timers), zeroes gate press counts, clears portal cooldowns, then
+  // restores tile ids from initialMap.
+  function resetElements() {
+    gameHelpers.clearTileTimers();
+
+    for (const row of gameState.dataMap) {
+      for (const entry of row ?? []) {
+        if (!entry) continue;
+
+        if (entry.defaultState !== undefined) {
+          entry.red           = 0;
+          entry.blue          = 0;
+          entry.stickyHandler = null;
+          entry.currentState  = entry.defaultState;
+        }
+
+        if (entry.portalOnCooldown !== undefined) {
+          entry.portalOnCooldown = false;
+        }
+      }
+    }
+
+    resetTiles();
+  }
+
+  // Strips every carried effect off every player: powerups and their
+  // timers, pending respawns, team-tile stacks, portal re-entry memory.
+  function resetPlayerEffects() {
+    for (const player of gameState.players) {
+      gameHelpers.clearAllPlayerTimers(player);
+
+      player.tagpro        = false;
+      player.rollingBomb   = false;
+      player.jukeJuice     = false;
+      player.activeTeamTiles.clear();
+      player.lastPortalX   = null;
+      player.lastPortalY   = null;
+
+      for (const name of Object.keys(player.modifiers)) {
+        gameHelpers.removeModifier(player, name);
+      }
+    }
+  }
+
+  // Fresh field: scores zeroed, carried flags returned, player effects
+  // stripped, elements and tiles restored, everyone back on spawn.
+  // Pregame captures are allowed, so this is what wipes the warm-up
+  // score when the real match begins.
+  function resetField() {
+    gameState.scores = { red: 0, blue: 0 };
+
+    for (const player of gameState.players) {
+      gameHelpers.returnFlag(player);
+    }
+
+    resetPlayerEffects();
+    resetElements();
+    respawnAll();
+
+    emitter.emit('score', gameState.scores);
+  }
+
+  function determineWinner() {
+    const { red, blue } = gameState.scores;
+    if (red === blue) return null;
+    return red > blue ? 'red' : 'blue';
+  }
+
+  function startMatch() {
+    if (gameState.state !== 'pregame' && gameState.state !== 'ended') return false;
+
+    resetField();
+    freezeAll(true);
+
+    gameState.state          = 'countdown';
+    gameState.phaseStartStep = gameState.stepCount;
+    gameState.pausedFrom     = null;
+
+    emitter.emit('matchStateChanged');
+    return true;
+  }
+
+  function endMatch(reason, winner = determineWinner()) {
+    gameState.state = 'ended';
+    freezeAll(true);
+    stopAllMomentum();
+
+    emitter.emit('update', gameState.players);
+    emitter.emit('matchEnd', { winner, reason, scores: { ...gameState.scores } });
+    emitter.emit('matchStateChanged');
+  }
+
+  function pauseMatch() {
+    // An editor room never starts a match, so it sits in 'pregame' forever -
+    // but freezing the sandbox is still meaningful there (it's what stops
+    // everyone mid-build). Pausing from pregame is therefore allowed in an
+    // editor room and only there; a game room pausing from pregame would
+    // mean pausing something that hasn't begun.
+    const activeStates = gameState.mode === 'editor'
+      ? ['pregame', 'countdown', 'live', 'overtime']
+      : ['countdown', 'live', 'overtime'];
+    if (!activeStates.includes(gameState.state)) return false;
+
+    gameState.pausedFrom = gameState.state;
+    gameState.state      = 'paused';
+
+    emitter.emit('matchStateChanged');
+    return true;
+  }
+
+  function resumeMatch() {
+    if (gameState.state !== 'paused' || !gameState.pausedFrom) return false;
+
+    gameState.state      = gameState.pausedFrom;
+    gameState.pausedFrom = null;
+
+    emitter.emit('matchStateChanged');
+    return true;
+  }
+
+  // Per-player overrides are the one thing a reset wipes that gameplay
+  // didn't change (owner decision, DO-NEXT-010): map edits and group
+  // settings persist across resets, per-player tuning does not. Routed
+  // through updatePlayerPhysics key-by-key so body-stat side effects and
+  // the playerPhysicsChanged broadcast happen exactly like a manual
+  // "reset to default" from the leader.
+  function clearAllPlayerOverrides() {
+    for (const player of gameState.players) {
+      const keys = Object.keys(player.overrides);
+      if (!keys.length) continue;
+
+      const cleared = {};
+      for (const key of keys) cleared[key] = null;
+      updatePlayerPhysics(player, cleared);
+    }
+  }
+
+  function resetMatch() {
+    gameState.state      = 'pregame';
+    gameState.pausedFrom = null;
+
+    // Deliberately only here, not in startMatch's resetField: tuning
+    // players in pregame and then starting the match keeps the tuning;
+    // the leader's explicit Reset wipes it.
+    clearAllPlayerOverrides();
+
+    resetField();
+    freezeAll(false);
+
+    // Pregame has no countdown to wait out, so pads start cycling right
+    // away here - startMatch instead waits for the countdown->live
+    // transition in tick() below.
+    gameHelpers.scheduleAllPowerupSpawns();
+
+    emitter.emit('matchStateChanged');
+  }
+
+  function updateSettings(partial) {
+    gameState.matchSettings = validateSettings(partial, gameState.matchSettings);
+    emitter.emit('matchStateChanged');
+    return gameState.matchSettings;
+  }
+
+  function getPhysics() {
+    const out = {};
+    for (const entry of PHYSICS_ENTRIES) {
+      out[entry.key] = config[entry.key];
+    }
+    return out;
+  }
+
+  // Room-wide side effects for physics changes, keyed by the schema `hooks`
+  // tag(s) a changed key carries. Each hook checks its own trigger keys
+  // against `partial`, so a plain new numeric/enum/bool setting with no
+  // `hooks` entry (e.g. bombRadius, portalExploRadius) runs none of these.
+  const SIDE_EFFECT_HOOKS = {
+    // World gravity is only read once at PhysicsWorld construction, so a
+    // config change has to be pushed onto the live Box2D world directly.
+    gravity(partial) {
+      if (partial.gravityX !== undefined || partial.gravityY !== undefined) {
+        physicsWorld.setGravity(config.gravityX, config.gravityY);
+      }
+    },
+
+    // Wall surface changes apply to every existing solid tile fixture -
+    // except cells with their own per-tile override, which keep it when
+    // the room-wide default changes underneath (same rule as per-player
+    // overrides vs room-wide changes).
+    wallSurface(partial) {
+      if (partial.wallRestitution === undefined && partial.wallFriction === undefined) return;
+      for (const row of gameState.dataMap) {
+        for (const entry of row ?? []) {
+          if (!entry?.body) continue;
+          syncWallSurface(entry.x, entry.y);
+        }
+      }
+    },
+
+    // Fixture friction and damping are baked in at body creation - push the
+    // new default onto every existing player's body. pushPlayerBodyStats
+    // itself prefers a player's own override over this config value, so a
+    // player with an explicit override is left untouched by a room-wide
+    // change, matching "overrides persist until the leader changes them".
+    playerBody(partial) {
+      if (partial.playerFriction === undefined && partial.linearDamping === undefined && partial.angularDamping === undefined) return;
+      for (const player of gameState.players) {
+        gameHelpers.pushPlayerBodyStats(player);
+      }
+    },
+
+    // accel/maxSpeed on players are read-only getters derived from
+    // overrides + baseStats + modifiers. Config changes rewrite each
+    // player's base; an explicit override (or an active modifier) still
+    // wins on top automatically.
+    playerBaseStats(partial) {
+      if (partial.accel === undefined && partial.maxSpeed === undefined) return;
+      for (const player of gameState.players) {
+        player.baseStats.accel    = config.accel;
+        player.baseStats.maxSpeed = config.maxSpeed;
+      }
+      emitter.emit('update', gameState.players);
+    },
+
+    // Wells were stamped with their radius/strength/falloff/mode at map load
+    // (physicsHelpers/loop.js just read those baked-in fields every tick),
+    // so a config change has to rewrite each existing well too, not just
+    // gameConfig, or the change would silently do nothing. Routed through
+    // syncWellSettings so a well with its own per-tile override keeps it
+    // when the room-wide default changes underneath (same rule as
+    // per-player overrides vs room-wide changes).
+    gravityWells(partial) {
+      const keys = ['gravityWellRadius', 'gravityWellStrength', 'gravityWellFalloff', 'gravityWellMode'];
+      if (!keys.some(key => partial[key] !== undefined)) return;
+      for (const well of gameState.wells) {
+        syncWellSettings(well.x - 0.5, well.y - 0.5);
+      }
+    },
+
+    // A pad showing a type that was just disabled needs to flip to empty
+    // (and re-arm its own spawn) right away instead of waiting to be picked
+    // up first.
+    powerupToggle(partial) {
+      const toggleKeys = PHYSICS_ENTRIES.filter(e => e.hooks?.includes('powerupToggle')).map(e => e.key);
+      if (!toggleKeys.some(key => partial[key] !== undefined)) return;
+      gameHelpers.enforcePowerupToggles();
+    },
+  };
+
+  // Per-player subset of the same hooks, scoped to one player instead of
+  // looping over gameState.players.
+  const PLAYER_SIDE_EFFECT_HOOKS = {
+    playerBody(partial, player) {
+      if (partial.playerFriction === undefined && partial.linearDamping === undefined && partial.angularDamping === undefined) return;
+      gameHelpers.pushPlayerBodyStats(player);
+    },
+    playerBaseStats(partial, player) {
+      if (partial.accel === undefined && partial.maxSpeed === undefined) return;
+      emitter.emit('update', player);
+    },
+  };
+
+  function updatePhysics(partial) {
+    const next = applyPartial(partial, config, { allowKey: e => e.scope === 'physics' });
+    Object.assign(config, next);
+
+    for (const tag of new Set(PHYSICS_ENTRIES.flatMap(e => e.hooks || []))) {
+      SIDE_EFFECT_HOOKS[tag]?.(partial ?? {});
+    }
+
+    emitter.emit('physicsChanged', getPhysics(), gameState.wells);
+    return getPhysics();
+  }
+
+  // Sparse - only whitelisted keys the leader has explicitly overridden for
+  // this player. The client already knows the room-wide defaults from
+  // getPhysics()/physicsChanged, so it computes "effective = override ??
+  // default" itself rather than receiving a merged snapshot here.
+  function getPlayerPhysics(player) {
+    return { ...player.overrides };
+  }
+
+  // Leader-only per-player override. `raw === null` for a key means "clear
+  // this override, revert to whatever the room-wide config says" - the
+  // wire-level counterpart of a "Reset to default" button.
+  function updatePlayerPhysics(player, partial) {
+    for (const [key, raw] of Object.entries(partial ?? {})) {
+      const entry = SCHEMA_BY_KEY[key];
+      if (!entry || !entry.playerScoped) {
+        throw new Error(`unknown player setting: ${key}`);
+      }
+      // null always means "clear this override, revert to the room-wide
+      // default" for a per-player setting - distinct from a schema entry's
+      // own `nullable` flag, which describes match-setting semantics.
+      if (raw === null) {
+        delete player.overrides[key];
+        continue;
+      }
+      player.overrides[key] = coerce(entry, raw);
+    }
+
+    const playerEntries = PLAYER_KEYS.map(key => SCHEMA_BY_KEY[key]);
+    for (const tag of new Set(playerEntries.flatMap(e => e.hooks || []))) {
+      PLAYER_SIDE_EFFECT_HOOKS[tag]?.(partial ?? {}, player);
+    }
+
+    emitter.emit('playerPhysicsChanged', player.id, getPlayerPhysics(player));
+    return getPlayerPhysics(player);
+  }
+
+  // The gravity-well tileScoped keys are the one exception to "read at
+  // the moment of use": the per-tick force loops (server physicsHelpers,
+  // client loop.js) read the baked well objects in gameState.wells, so
+  // an override has to be written through onto the matching well -
+  // override if this cell has one, else the room-wide config value.
+  function syncWellSettings(x, y) {
+    const well = gameState.wells.find(w => w.x === x + 0.5 && w.y === y + 0.5);
+    if (!well) return false;
+
+    const overrides = gameState.tileOverrides[`${x},${y}`] ?? {};
+    well.radius   = overrides.gravityWellRadius   ?? config.gravityWellRadius;
+    well.strength = overrides.gravityWellStrength ?? config.gravityWellStrength;
+    well.falloff  = overrides.gravityWellFalloff  ?? config.gravityWellFalloff;
+    well.mode     = overrides.gravityWellMode     ?? config.gravityWellMode;
+    return true;
+  }
+
+  // Wall surface values are baked into the cell body's fixtures like
+  // damping is into player bodies - a change (per-tile override or
+  // room-wide default) has to be pushed onto the live fixtures. No-op for
+  // sensor tiles (nothing bounces off a boost).
+  function syncWallSurface(x, y) {
+    const entry = gameState.getTile(x, y);
+    if (!entry?.body) return;
+
+    const overrides = gameState.tileOverrides[`${x},${y}`] ?? {};
+    for (let f = entry.body.GetFixtureList(); f; f = f.GetNext()) {
+      if (f.IsSensor()) continue;
+      f.SetRestitution(overrides.wallRestitution ?? config.wallRestitution);
+      f.SetFriction(overrides.wallFriction ?? config.wallFriction);
+    }
+  }
+
+  // Leader-only per-tile override (DO-NEXT-013), the tile counterpart of
+  // updatePlayerPhysics: `raw === null` clears that key. The whole partial
+  // is validated into a copy before anything is applied, so a bad key
+  // changes nothing. Most tileScoped keys are read at the moment of use
+  // (gameHelpers.tileSetting) and need no side effect; gravity-well keys
+  // write through to the baked well object (syncWellSettings above).
+  function updateTileSettings(x, y, partial) {
+    if (!Number.isInteger(x) || !Number.isInteger(y)
+        || gameState.map[y]?.[x] === undefined) {
+      throw new Error('tile out of bounds');
+    }
+
+    const cellKey  = `${x},${y}`;
+    const tileId   = gameState.map[y][x];
+    // id 0 is an empty cell with no physicsLookup entry - it behaves like
+    // floor for movement purposes (see gameInstance.js WALL_TILE_IDS/
+    // floorFriction usage), so floorFriction's ['floor'] tileCategories
+    // must accept it too.
+    const category = tileId === 0 ? 'floor' : physicsLookup[tileId]?.category;
+    const overrides = { ...(gameState.tileOverrides[cellKey] ?? {}) };
+
+    for (const [key, raw] of Object.entries(partial ?? {})) {
+      const entry = SCHEMA_BY_KEY[key];
+      if (!entry || !entry.tileScoped) {
+        throw new Error(`unknown tile setting: ${key}`);
+      }
+      if (entry.tileCategories && !entry.tileCategories.includes(category)) {
+        throw new Error(`${key} does not apply to this tile`);
+      }
+      if (raw === null) {
+        delete overrides[key];
+        continue;
+      }
+      overrides[key] = coerce(entry, raw);
+    }
+
+    if (Object.keys(overrides).length) {
+      gameState.tileOverrides[cellKey] = overrides;
+    } else {
+      delete gameState.tileOverrides[cellKey]; // sparse: no empty entries
+    }
+
+    emitter.emit('tileSettingsChanged', x, y, overrides);
+
+    // Baked-in per-tile values need their write-through (cheap no-ops for
+    // cells they don't apply to). The wall surface needs no extra
+    // broadcast: the client's prediction walls sync themselves off the
+    // tileSettingsChanged packet it already got.
+    syncWallSurface(x, y);
+
+    // Client prediction reads wells off the physicsChanged packet, so a
+    // well write-through has to reach the room the same way a room-wide
+    // gravity-well change does (settings unchanged, wells updated).
+    if (syncWellSettings(x, y)) {
+      emitter.emit('physicsChanged', getPhysics(), gameState.wells);
+    }
+
+    return overrides;
+  }
+
+  function checkCaptureWinConditions(player) {
+    // No score is kept in an editor room, so score limit and mercy have
+    // nothing to test and there is no match for overtime to end.
+    if (gameState.mode === 'editor') return;
+
+    const settings = gameState.matchSettings;
+
+    if (gameState.state === 'overtime') {
+      endMatch('overtime', player.team);
+      return;
+    }
+
+    if (gameState.state !== 'live') return;
+
+    if (settings.scoreLimit !== null && gameState.scores[player.team] >= settings.scoreLimit) {
+      endMatch('scoreLimit', player.team);
+      return;
+    }
+
+    if (settings.mercyRule !== null) {
+      const diff = Math.abs(gameState.scores.red - gameState.scores.blue);
+      if (diff >= settings.mercyRule) {
+        endMatch('mercy', determineWinner());
+      }
+    }
+  }
+
+  function tick() {
+    // No timer in an editor room: nothing counts down, so nothing expires
+    // into overtime or a time-limit end.
+    if (gameState.mode === 'editor') return;
+
+    const settings = gameState.matchSettings;
+
+    if (gameState.state === 'countdown') {
+      if (elapsedMs() >= settings.countdownDuration) {
+        freezeAll(false);
+        gameState.state          = 'live';
+        gameState.phaseStartStep = gameState.stepCount;
+        gameHelpers.scheduleAllPowerupSpawns(); // powerupRespawn starts counting from here, not from Start
+        emitter.emit('matchStateChanged');
+      }
+      return;
+    }
+
+    if (gameState.state === 'live') {
+      if (elapsedMs() >= settings.timeLimit) {
+        const winner = determineWinner();
+        if (winner === null && settings.overtimeEnabled) {
+          gameState.state          = 'overtime';
+          gameState.phaseStartStep = gameState.stepCount;
+          emitter.emit('matchStateChanged');
+        } else {
+          endMatch('timeLimit', winner);
+        }
+      }
+    }
+  }
+
+  emitter.on('capture', checkCaptureWinConditions);
+
+  return {
+    startMatch,
+    endMatch,
+    pauseMatch,
+    resumeMatch,
+    resetMatch,
+    updateSettings,
+    updatePhysics,
+    updatePlayerPhysics,
+    getPhysics,
+    getPhysicsDefaults,
+    getPhysicsCategories,
+    getPhysicsSchemaMeta,
+    getMatchSchemaMeta,
+    getPlayerPhysics,
+    getPlayerKeys: () => PLAYER_KEYS,
+    updateTileSettings,
+    getTileKeys: () => TILE_KEYS,
+    tick,
+  };
+};
+
+if (typeof module !== 'undefined' && module.exports) module.exports = createMatchManager;
+if (typeof globalThis !== 'undefined') globalThis.createMatchManager = createMatchManager;

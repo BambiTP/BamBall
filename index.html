@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Local Grabtag</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #111; overflow: hidden; font-family: sans-serif; }
+  #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #hud { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); color: #fff; text-align: center; text-shadow: 0 1px 2px #000; pointer-events: none; }
+  #hudScore { font-size: 20px; font-weight: bold; }
+  #hudTimer { font-size: 14px; opacity: 0.8; }
+  #joinPanel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; gap: 16px; }
+  #joinPanel button { font-size: 22px; padding: 14px 36px; border: none; border-radius: 6px; cursor: pointer; color: #fff; }
+  #joinRedBtn { background: #cc3333; }
+  #joinBlueBtn { background: #3355cc; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="viewport"></div>
+<div id="hud">
+  <div id="hudScore">Red 0 - 0 Blue</div>
+  <div id="hudTimer">-:--</div>
+</div>
+<div id="joinPanel">
+  <button id="joinRedBtn">Join Red</button>
+  <button id="joinBlueBtn">Join Blue</button>
+</div>
+<div id="texturePackPicker"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.5.2/pixi.min.js"></script>
+
+<script src="shared/Box2dWeb-2.1.a.3.js"></script>
+<script src="shared/forceFields.js"></script>
+<script src="shared/movement.js"></script>
+<script src="shared/overlayCoords.js"></script>
+
+<script src="engine/eventBus.js"></script>
+<script src="engine/coords.js"></script>
+<script src="engine/gameConfig.js"></script>
+<script src="engine/settingsResolver.js"></script>
+<script src="engine/tiles/powerupTypes.js"></script>
+<script src="engine/tiles/physicsData.js"></script>
+<script src="engine/settingsSchema.js"></script>
+<script src="engine/matchSettings.js"></script>
+<script src="engine/gameState.js"></script>
+<script src="engine/physicsWorld.js"></script>
+<script src="engine/snapshotFactory.js"></script>
+<script src="engine/playerLifecycle.js"></script>
+<script src="engine/flagLogic.js"></script>
+<script src="engine/teamTiles.js"></script>
+<script src="engine/gateLogic.js"></script>
+<script src="engine/powerupSpawner.js"></script>
+<script src="engine/gameHelpers.js"></script>
+<script src="engine/physicsHelpers.js"></script>
+<script src="engine/mapWiring.js"></script>
+<script src="engine/tiles/customTileActions.js"></script>
+<script src="engine/tiles/mapFormat.js"></script>
+<script src="engine/tiles/tileHandlers.js"></script>
+<script src="engine/tiles/tileLogic.js"></script>
+<script src="engine/matchManager.js"></script>
+<script src="engine/gameInstance.js"></script>
+<script src="engine/packetBuilders.js"></script>
+
+<script src="client/renderData.js"></script>
+<script src="client/quadrantCoords.js"></script>
+<script src="client/particles.js"></script>
+
+<script src="client/state/engineClock.js"></script>
+<script src="client/state/gameState.js"></script>
+<script src="client/state/settingsState.js"></script>
+<script src="client/state/tileCatalog.js"></script>
+<script src="client/state/localSettings.js"></script>
+
+<script src="client/net/packetSchema.js"></script>
+<script src="client/net/packetRouter.js"></script>
+
+<script src="client/physicsWorld.js"></script>
+<script src="client/entityReconciler.js"></script>
+<script src="client/movement.js"></script>
+<script src="client/loop.js"></script>
+
+<script src="client/render/renderer.js"></script>
+<script src="client/render/spriteAtlas.js"></script>
+<script src="client/render/wallAutotile.js"></script>
+<script src="client/render/playerRenderer.js"></script>
+<script src="client/render/overlayRenderer.js"></script>
+<script src="client/render/camera.js"></script>
+
+<script src="client/input/keyboard.js"></script>
+<script src="client/input/cameraControls.js"></script>
+<script src="client/input/fireInput.js"></script>
+
+<script src="client/app/appEvents.js"></script>
+<script src="client/app/actions.js"></script>
+<script src="client/app/spriteSheetLoader.js"></script>
+<script src="client/app/packetApplier.js"></script>
+<script src="client/app/stateWiring.js"></script>
+
+<script src="client/ui/hud.js"></script>
+
+<script src="local/localTransport.js"></script>
+<script src="local/joinUI.js"></script>
+<script src="local/main.js"></script>
+</body>
+</html>

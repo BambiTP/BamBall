@@ -1,0 +1,546 @@
+/* ---- design tokens -----------------------------------------------------
+   Muted slate/charcoal surface ramp (no near-black) + a desaturated amber
+   accent. Amber is deliberately neither team color (red / blue) so "your
+   action / your selection" can never be misread as a team affiliation - it
+   extends the accent outline that already meant "selected" in the roster. */
+:root {
+  --surface-0: #2c3038;   /* panel/modal background */
+  --surface-1: #363b44;   /* sub-panel background */
+  --surface-2: #40464f;   /* controls (buttons, inputs, team boxes) */
+  --surface-3: #4b525c;   /* control hover */
+  --border: #4e555f;
+  --text: #e2e4e8;
+  --text-dim: #a4aab3;
+  --text-faint: #7d838c;
+  --accent: #c9a24e;
+  --accent-dim: #4a4230;
+  --danger: #c1615f;
+  --danger-dim: #453536;
+  --red: #c1615f;
+  --blue: #5b84b8;
+  --btn-radius: 0px; /* sharp corners */
+}
+
+html, body { margin: 0; height: 100%; overflow: hidden; background: #23262c; font-family: 'Chakra Petch', system-ui, sans-serif; }
+#viewport { position: fixed; inset: 0; }
+/* Edit mode: clicking selects/pans instead of firing, so the cursor should
+   read as "not a crosshair" the moment it's on. Spectating gets the same
+   treatment - dragging pans the camera instead of firing (there's nothing
+   to fire anyway with no ball of your own). */
+body.spectating #viewport { cursor: grab; }
+/* ...but a held palette tool captures clicks (no pan available), so the
+   grab affordance would lie - regular cursor while placing tiles. The
+   hovered cell gets a yellow highlight instead (renderer.setTileHover). */
+#hud { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; background: rgba(0, 0, 0, 0.5); color: var(--text); padding: 4px 12px; border-radius: 4px; font-family: monospace; font-size: 14px; pointer-events: none; }
+#perfOverlay { position: fixed; top: 8px; left: 8px; display: flex; flex-direction: column; gap: 2px; background: rgba(0, 0, 0, 0.5); color: var(--text); padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; pointer-events: none; }
+
+/* ---- shared control styling --------------------------------------------
+   Every button and text/number/select input inside the overlay panels gets
+   the same dark treatment, instead of falling back to the browser's native
+   white chrome. Layout (width/margin) stays per-container below; this rule
+   is looks only. */
+#menuBox button, #settingsPanel button, #playerSettingsPanel button, #disconnectBox button {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--btn-radius);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#menuBox button:hover, #settingsPanel button:hover, #playerSettingsPanel button:hover, #disconnectBox button:hover { background: var(--surface-3); }
+#menuBox button:active, #settingsPanel button:active, #playerSettingsPanel button:active { background: var(--surface-1); }
+
+/* Primary = the one action you came to this panel for (Start, Join, Apply,
+   Rejoin). Danger = destructive / hard to undo (End, Reset, Leave Group,
+   Kick). Everything else stays neutral so these two read at a glance. */
+#menu button.primary, #disconnectBox button.primary {
+  background: var(--accent-dim);
+  border-color: #6b5c2e;
+  color: var(--accent);
+  font-weight: 700;
+}
+#menu button.primary:hover, #disconnectBox button.primary:hover { background: #5a4a28; }
+#menu button.danger, #playerSettingsPanel button.danger {
+  background: var(--danger-dim);
+  border-color: #6b3538;
+  color: #f0908f;
+}
+#menu button.danger:hover, #playerSettingsPanel button.danger:hover { background: #4a2e30; }
+
+/* Leader-controls strip and footer use smaller buttons than the main
+   Join/Leave/Settings actions. */
+#menu button.small { padding: 6px 10px; font-size: 12px; }
+
+/* Keyboard users get the same "where am I" signal mouse users get from
+   hover. focus-visible (not focus) so clicks don't leave a ring behind. */
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* All text/number/select fields in the overlays (map code, debug console,
+   setting rows). Checkboxes keep native rendering but pick up the accent. */
+#menu input:not([type="checkbox"]), #menu select,
+#playerSettingsPanel input:not([type="checkbox"]) {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+#menu input::placeholder { color: var(--text-faint); }
+#menu input[type="checkbox"], #playerSettingsPanel input[type="checkbox"] { accent-color: var(--accent); }
+
+/* ---- chat: persistent, bottom-left, visible during play (not tucked
+   behind the pause menu) ------------------------------------------------ */
+/* Above #menu and #settingsOverlay (z-index 10) so chat stays usable with
+   either open, instead of being covered by the pause/settings backdrops. */
+/* Transparent overlay, not a solid panel - text sits directly over the
+   game with a shadow for legibility instead of a background box. */
+#chatBox { position: fixed; left: 8px; bottom: 8px; width: 280px; background: transparent; padding: 6px; z-index: 20; }
+#chatLog { height: 130px; overflow-y: auto; scrollbar-width: thin; font-size: 12px; color: var(--text); display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.6); }
+.chatRow { word-break: break-word; }
+.chatRow .chatName { color: #7ab8ff; font-weight: bold; margin-right: 4px; }
+/* Input stays invisible (no fill/border) until focused, so it doesn't
+   look like a UI bar sitting over the game when the player isn't typing. */
+#chatInput { width: 100%; box-sizing: border-box; padding: 5px 6px; background: transparent; color: var(--text); border: 1px solid transparent; border-radius: 3px; font-size: 12px; transition: background 0.15s, border-color 0.15s; }
+#chatInput::placeholder { color: transparent; }
+#chatInput:focus { background: rgba(0, 0, 0, 0.35); border-color: rgba(255, 255, 255, 0.25); }
+#chatInput:focus::placeholder { color: rgba(255, 255, 255, 0.55); }
+
+/* ---- pause menu -------------------------------------------------------- */
+#menu { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; }
+#menu.hidden { display: none; }
+#menuBox { background: var(--surface-0); color: var(--text); border-radius: 8px; width: min(620px, calc(100vw - 24px)); max-height: 90vh; overflow-y: auto; scrollbar-width: thin; box-sizing: border-box; }
+#menuBox button { width: auto; }
+
+/* Top bar: connection status on the left, Settings as a single icon button
+   on the right - replaces the old lopsided status+Settings side rail that
+   sat next to the team grid. */
+#topBar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid var(--surface-1);
+  background: var(--surface-1);
+  position: sticky; top: 0;
+}
+#status { font-size: 13px; font-weight: 600; color: var(--text); }
+#openSettingsBtn {
+  width: 32px; height: 32px; padding: 0; flex-shrink: 0;
+  font-size: 16px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+
+#menuBody { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+/* Panel titles are labels, not content - set them like the physics category
+   headers (small caps, dim) so player names / controls are what stand out. */
+/* Still used by the settings modal's panels (Map, Match Settings, Group
+   Settings, Debug, etc.) - the esc-menu redesign moved away from this
+   boxed-card look, but the settings modal keeps it unchanged. */
+.panel { background: var(--surface-1); padding: 8px; border-radius: 4px; margin-bottom: 10px; }
+.panelTitle { font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 6px; }
+
+/* Teams + Join/Leave Game side by side - the buttons no longer get their
+   own full-width row below the team grid. */
+#topRow { display: flex; gap: 14px; align-items: stretch; }
+#topRow .teamsWrap { flex: 1; min-width: 0; }
+#sideActions { width: 150px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* Below ~480px the side column would squeeze the team grid unusably, so
+   Join/Leave Game drop under the teams as a horizontal strip instead. */
+@media (max-width: 480px) {
+  #topRow { flex-direction: column; }
+  #sideActions { width: 100%; flex-direction: row; }
+  #sideActions button { flex: 1; }
+}
+
+/* Red left, blue right, spectators spanning both columns underneath -
+   literally twice the width of a red/blue box. */
+#teamsGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.teamBox { background: var(--surface-1); padding: 6px; min-height: 70px; border-radius: 4px; border-top: 3px solid var(--surface-3); }
+.teamBox.wide { grid-column: 1 / -1; min-height: 50px; }
+.teamBox[data-team="red"] { border-top-color: var(--red); }
+.teamBox[data-team="blue"] { border-top-color: var(--blue); }
+.teamBox.dragOver { outline: 1px dashed var(--text-dim); }
+.teamTitle { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.teamBox[data-team="red"] .teamTitle { color: var(--red); }
+.teamBox[data-team="blue"] .teamTitle { color: var(--blue); }
+
+.teamList { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Player banner: a fixed 120x40 placeholder - solid white for now, meant to
+   be swapped for a per-player custom image/color later. The name sits
+   directly on the white background (the banner *is* the name's background),
+   not on an overlay. */
+.playerRow { display: flex; flex-direction: column; width: 120px; gap: 3px; }
+.playerBannerFace {
+  width: 120px; height: 40px; box-sizing: border-box;
+  background: #f4f4f2; border: 1px solid var(--border); border-radius: var(--btn-radius);
+  color: #222; font-size: 12px; font-weight: 700;
+  display: flex; align-items: flex-end; padding: 5px;
+  cursor: grab; overflow: hidden;
+}
+.playerBannerFace span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+.playerRow.selected .playerBannerFace { outline: 2px solid var(--accent); outline-offset: -2px; }
+.playerRow .playerRowButtons { display: flex; gap: 3px; }
+.playerRow .playerRowButtons button { flex: 1; padding: 2px 4px; font-size: 11px; }
+
+/* Leader controls: a slim single strip, not a padded card - leader-only
+   convenience, not a primary section of the menu. */
+#matchControlPanel { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--surface-1); border-bottom: 1px solid var(--surface-1); padding: 10px 2px; }
+#leaderHeader { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+#leaderLabel { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); }
+#matchState { font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--text-dim); background: var(--surface-2); padding: 2px 7px; border-radius: var(--btn-radius); }
+#matchButtons { display: flex; flex-wrap: wrap; gap: 5px; }
+
+#footerRow { display: flex; justify-content: flex-end; }
+
+.settingRow { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 4px; }
+.settingRow input[type="number"] { width: 90px; }
+
+/* ---- settings modal: everything that isn't essential mid-game lives
+   here, opened from #openSettingsBtn. A centered modal over its own
+   backdrop: tab rail on the left, active-tab header + scrolling body on
+   the right. Fixed height (not fit-content) so switching tabs never
+   resizes the dialog. ---------------------------------------------------- */
+#settingsOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+#settingsOverlay.hidden { display: none; }
+
+#settingsPanel {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, calc(100vw - 24px));
+  height: min(540px, calc(100vh - 48px));
+  background: var(--surface-0);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+#settingsPanel button { display: block; width: 100%; padding: 8px; margin-bottom: 6px; }
+
+/* Same specificity fix as #settingsMainHeader #closeSettingsBtn below: an
+   extra #settingsPanel ancestor selector on top of the shared .tpp* class
+   outranks the block/width:100% default above for the texture picker's
+   row-level icon buttons (Lock/Mandatory/Edit) and toolbar buttons -
+   without it every icon stretches to the full row width and overlaps the
+   tile name next to it. The grid/options-header buttons don't need this:
+   picking a texture happens in textureBrowser.js's modal, which is
+   appended to <body>, outside #settingsPanel entirely. */
+#settingsPanel .tppIconBtn {
+  display: flex;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin-bottom: 0;
+}
+#settingsPanel .tppApplyRow button {
+  display: inline-block;
+  width: auto;
+  margin-bottom: 0;
+}
+#settingsPanel .tppChangeAll button {
+  display: inline-block;
+  width: auto;
+  padding: 4px 10px;
+  margin-bottom: 0;
+}
+
+/* The Textures and Personal tabs are mostly a searchable gallery over 40+
+   tile slots, each with dozens of themes - the schema-form tabs' 680x540
+   box is cramped for that. Scoped to a class ui/settingsPanel.js toggles
+   only for those two tabs, so every other tab's size is untouched. */
+#settingsPanel.galleryTab {
+  width: min(880px, calc(100vw - 24px));
+  height: min(680px, calc(100vh - 48px));
+}
+/* The bigger modal above has more vertical room to give the picker - raise
+   its own cap (shared/texturePackPicker.css) to use it, keeping the same
+   fixed-toolbar/scrolling-list/fixed-footer internal layout. */
+#settingsPanel.galleryTab .texturePackPicker { max-height: 560px; }
+
+/* Tab strip across the top. The title sits here (not in the header) so
+   the header is free to name the active tab. */
+#settingsSide {
+  width: 100%;
+  flex-shrink: 0;
+  background: var(--surface-1);
+  border-right: none;
+  border-bottom: 1px solid var(--surface-2);
+  padding: 10px 8px;
+  box-sizing: border-box;
+}
+#settingsTitle {
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  padding: 0 4px 8px;
+}
+#settingsTabs { display: flex; flex-direction: row; flex-wrap: wrap; gap: 2px; }
+#settingsTabs .tabBtn {
+  flex: 1;
+  width: auto;
+  margin-bottom: 0;
+  padding: 8px 6px;
+  text-align: center;
+  font-size: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-radius: 0;
+}
+#settingsTabs .tabBtn:hover { background: var(--surface-2); color: var(--text); }
+/* Active tab gets an accent edge on the bottom - the top-strip version
+   of the old underline, so the current tab is findable at a glance. */
+#settingsTabs .tabBtn.active { background: var(--surface-3); color: var(--text); font-weight: bold; box-shadow: inset 0 -3px 0 var(--accent); }
+
+/* min-height: 0 overrides the flex-item default (auto), which otherwise
+   sizes this to its unscrolled content height and starves #settingsBody's
+   overflow-y: auto of any room to actually scroll. */
+#settingsMain { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
+#settingsMainHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--surface-2);
+  font-weight: bold;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* Extra #settingsMainHeader ancestor selector is needed to outrank the
+   earlier "#settingsPanel button" rule (equal id count, but that rule also
+   has a type selector) - without it, this button fell back to width:100%
+   and the browser's native white button chrome. */
+#settingsMainHeader #closeSettingsBtn {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 0;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid #444;
+  border-radius: var(--btn-radius);
+  flex-shrink: 0;
+}
+#settingsMainHeader #closeSettingsBtn:hover { background: #444; }
+
+#settingsBody { flex: 1; overflow-y: auto; scrollbar-width: thin; padding: 12px 14px; }
+.tabPanel.hidden { display: none; }
+
+/* Below ~560px the title label is dropped to leave more room for the tabs
+   themselves (same narrow-screen tradeoff as #topRow). */
+@media (max-width: 560px) {
+  #settingsPanel { height: min(540px, calc(100vh - 24px)); }
+  #settingsSide { padding: 8px; }
+  #settingsTitle { display: none; }
+}
+
+#mapInfoRow { display: flex; gap: 10px; margin-bottom: 8px; }
+#mapPreview { background: #111; border: 1px solid #444; border-radius: 4px; flex-shrink: 0; }
+#mapMeta { font-size: 12px; color: #bbb; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+#mapNameEl { font-size: 14px; font-weight: bold; color: var(--text); }
+
+#settingsDiffList { font-size: 12px; color: #bbb; }
+.diffRow { padding: 2px 0; }
+.diffRow .diffDefault { color: var(--text-faint); }
+
+/* Category pills above #physicsRows (built by ui.js from
+   game.physicsCategories). Same accent-means-current rule as the modal's
+   tab rail, worn as a border since pills have no shared edge. */
+#physicsSubTabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+#physicsSubTabs .subTabBtn {
+  display: inline-block;
+  width: auto;
+  margin-bottom: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+#physicsSubTabs .subTabBtn:hover { background: var(--surface-3); color: var(--text); }
+#physicsSubTabs .subTabBtn.active {
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: bold;
+  border-color: var(--accent);
+}
+
+/* One category visible at a time; hidden rows keep their inputs in the
+   DOM so Apply still collects edits from every category. No inner
+   max-height/scroll - a single category always fits, and the modal body
+   scrolls anyway. */
+#physicsRows {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+#physicsRows .settingRow.hidden { display: none; }
+#physicsRows .settingRow {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  margin-bottom: 0;
+}
+#physicsRows .settingRow span { color: var(--text-dim); font-size: 11px; }
+#physicsRows .settingRow input:not([type="checkbox"]),
+#physicsRows .settingRow select {
+  width: 100%;
+  box-sizing: border-box;
+}
+#physicsRows .settingRow input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  align-self: flex-start;
+}
+
+/* Category section header - since the Group panel moved to sub-tab pills
+   this only appears in #matchSettingsRows (the Match panel's headers).
+   grid-column is inert there (not a grid) but kept in case a grid
+   container uses these headers again. */
+.physicsCategoryTitle {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+  border-bottom: 1px solid #3a3a3a;
+  padding-bottom: 3px;
+  margin-top: 8px;
+}
+.physicsCategoryTitle:first-child { margin-top: 0; }
+
+#mapRow { display: flex; gap: 6px; margin: 10px 0 0; }
+#mapRow input { flex: 1; padding: 6px; }
+#mapRow button { width: auto; margin: 0; }
+
+/* ---- per-player settings panel: a small standalone centered modal (not
+   part of the #settingsOverlay modal) since it targets one specific,
+   changing player and can be opened from in-game (menu closed) or from
+   the roster (menu open). ---------------------------------------------- */
+#playerSettingsPanel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(320px, calc(100vw - 24px));
+  max-height: 80vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  background: var(--surface-0);
+  color: var(--text);
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+  z-index: 30;
+}
+#playerSettingsPanel.hidden { display: none; }
+
+#playerSettingsHeader { display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 15px; margin-bottom: 10px; }
+
+#playerSettingsHeader button {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 0;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid #444;
+  border-radius: var(--btn-radius);
+}
+#playerSettingsHeader button:hover { background: #444; }
+
+#playerSettingsRows .settingRow { flex-direction: column; align-items: stretch; gap: 3px; margin-bottom: 10px; }
+#playerSettingsRows .settingRow span { color: var(--text-dim); font-size: 11px; }
+#playerSettingsRows input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+.playerSettingRowButtons { display: flex; gap: 4px; margin-top: 4px; }
+.playerSettingRowButtons button { flex: 1; width: auto; margin: 0; padding: 4px; font-size: 11px; }
+
+#presetsSubTabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+#presetsSubTabs .presetsSubTabBtn {
+  display: inline-block;
+  width: auto;
+  margin-bottom: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+#presetsSubTabs .presetsSubTabBtn:hover { background: var(--surface-3); color: var(--text); }
+#presetsSubTabs .presetsSubTabBtn.active {
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: bold;
+  border-color: var(--accent);
+}
+
+.presetsSaveRow { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.presetsSaveRow.hidden { display: none; }
+.presetsSaveRow input[type="text"] { flex: 1; }
+.presetsSaveRow button { width: auto; margin: 0; white-space: nowrap; }
+.presetsPublicToggle { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.presetsPublicToggle input[type="checkbox"] { width: auto; margin: 0; }
+.presetsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: var(--surface-2);
+  border: 1px solid #444;
+  border-radius: var(--btn-radius);
+}
+.presetsRowName { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.presetsRowButtons { display: flex; gap: 4px; flex-shrink: 0; }
+.presetsRowButtons button { width: auto; margin: 0; padding: 4px 8px; font-size: 11px; }
+
+#log { white-space: pre-wrap; height: 140px; overflow-y: auto; scrollbar-width: thin; background: #111; padding: 6px; font-family: monospace; font-size: 12px; }
+#inputLine { display: flex; margin-top: 6px; font-family: monospace; }
+#commandInput { flex: 1; padding: 4px; }
+
+/* ---- disconnect overlay ------------------------------------------------ */
+/* Above chat (z-index 20) and the pause menu - once the socket is dead
+   nothing underneath is interactive anyway. */
+#disconnectOverlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; z-index: 30; }
+#disconnectOverlay.hidden { display: none; }
+#disconnectBox { background: var(--surface-0); color: var(--text); padding: 24px 32px; border-radius: 6px; text-align: center; min-width: 260px; }
+#disconnectTitle { font-size: 18px; font-weight: bold; margin-bottom: 8px; }
+#disconnectReason { font-size: 13px; color: #aaa; margin-bottom: 16px; }
+#rejoinBtn { padding: 8px 24px; }
