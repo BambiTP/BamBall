@@ -15,6 +15,16 @@
   #joinBlueBtn { background: #3355cc; }
   .hidden { display: none !important; }
   #texturePackPicker { position: absolute; bottom: 8px; right: 8px; max-width: 420px; max-height: 60vh; overflow: auto; background: rgba(20,20,20,0.85); border-radius: 8px; padding: 8px; color: #fff; }
+  #leaderPanel { position: absolute; top: 8px; left: 8px; background: rgba(20,20,20,0.85); border-radius: 8px; padding: 10px; color: #fff; font-size: 13px; width: 220px; }
+  #leaderPanel h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; opacity: 0.7; }
+  #leaderPanel .settingsSlot { margin-bottom: 10px; }
+  #leaderPanel label { display: block; margin-bottom: 2px; }
+  #leaderPanel input[type="file"] { width: 100%; font-size: 11px; color: #ccc; }
+  #leaderPanel .fileStatus { font-size: 11px; opacity: 0.7; min-height: 14px; }
+  #leaderPanel button { width: 100%; margin-top: 4px; padding: 6px; border: none; border-radius: 4px; cursor: pointer; }
+  #recordToggleBtn { background: #444; color: #fff; }
+  #recordToggleBtn.recording { background: #cc3333; }
+  #recordSaveBtn { background: #333; color: #fff; }
 </style>
 <link rel="stylesheet" href="shared/texturePackPicker.css">
 </head>
@@ -29,6 +39,22 @@
   <button id="joinBlueBtn">Join Blue</button>
 </div>
 <div id="texturePackPicker"></div>
+<div id="leaderPanel">
+  <div class="settingsSlot">
+    <h4>Pregame Settings File</h4>
+    <label for="pregameSettingsFile">JSON: { physics?, match? }</label>
+    <input type="file" id="pregameSettingsFile" accept="application/json">
+    <div class="fileStatus" id="pregameSettingsStatus"></div>
+  </div>
+  <div class="settingsSlot">
+    <h4>Game Settings File</h4>
+    <label for="gameSettingsFile">Applies the moment the match goes live</label>
+    <input type="file" id="gameSettingsFile" accept="application/json">
+    <div class="fileStatus" id="gameSettingsStatus"></div>
+  </div>
+  <button id="recordToggleBtn">Start Recording</button>
+  <button id="recordSaveBtn" disabled>Save Recording Now</button>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.5.2/pixi.min.js"></script>
 
@@ -108,6 +134,7 @@
 <script src="local/localReplayRecorder.js"></script>
 <script src="local/localTransport.js"></script>
 <script src="local/joinUI.js"></script>
+<script src="local/settingsFiles.js"></script>
 <script src="local/main.js"></script>
 </body>
 </html>

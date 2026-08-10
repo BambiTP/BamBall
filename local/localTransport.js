@@ -97,6 +97,7 @@ var localTransport = (function () {
     gi.emitter.on('matchStateChanged', function () {
       packetRouter.dispatch(packetBuilders.matchState(gi.gameState));
       recorder.recordBroadcast(packetBuilders.matchState(gi.gameState));
+      appEvents.emit('matchStateApplied', gi.gameState.state);
 
       // Matches the real server's rule (server/packets/outgoing.js): a
       // fresh match going live always starts recording, if a host hasn't
@@ -280,5 +281,7 @@ var localTransport = (function () {
     startRecording: startRecording, stopRecording: stopRecording,
     isRecording: isRecording, saveRecording: saveRecording,
     getRoomCode: function () { return roomCode; },
+    gameInstance: function () { return gi; },
+    matchState: function () { return gi ? gi.gameState.state : null; },
   };
 })();

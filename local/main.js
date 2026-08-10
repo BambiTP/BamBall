@@ -21,6 +21,7 @@ function start() {
 
   initHud();
   initJoinUI();
+  initSettingsFilesUI();
 
   // Browsable and persists picks to localStorage/IndexedDB now (see
   // local/localTexturePrefs.js) - live re-texturing of the rendered game
