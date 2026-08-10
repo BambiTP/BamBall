@@ -346,6 +346,18 @@ function ensureChangeAllConfirmModal() {
   list.className = 'tppGrid';
   modal.appendChild(list);
 
+  var toggleRow = document.createElement('div');
+  toggleRow.className = 'tppApplyRow';
+  var selectAllBtn = document.createElement('button');
+  selectAllBtn.type = 'button';
+  selectAllBtn.textContent = 'Select All';
+  var deselectAllBtn = document.createElement('button');
+  deselectAllBtn.type = 'button';
+  deselectAllBtn.textContent = 'Deselect All';
+  toggleRow.appendChild(selectAllBtn);
+  toggleRow.appendChild(deselectAllBtn);
+  modal.appendChild(toggleRow);
+
   var footer = document.createElement('div');
   footer.className = 'tppApplyRow';
   var confirmBtn = document.createElement('button');
@@ -369,12 +381,22 @@ function ensureChangeAllConfirmModal() {
   backdrop.addEventListener('click', function (event) { if (event.target === backdrop) close(); });
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
+  selectAllBtn.addEventListener('click', function () {
+    if (!changeAllConfirmState) return;
+    changeAllConfirmState.covered.forEach(function (t) { changeAllConfirmState.selected[t.tileId] = true; });
+    renderChangeAllConfirmList(changeAllConfirmEl, changeAllConfirmState.covered);
+  });
+  deselectAllBtn.addEventListener('click', function () {
+    if (!changeAllConfirmState) return;
+    changeAllConfirmState.selected = {};
+    renderChangeAllConfirmList(changeAllConfirmEl, changeAllConfirmState.covered);
+  });
   confirmBtn.addEventListener('click', function () {
     if (!changeAllConfirmState) return;
     var onConfirm = changeAllConfirmState.onConfirm;
-    var excludedTileIds = Object.keys(changeAllConfirmState.excluded || {});
+    var selectedTileIds = Object.keys(changeAllConfirmState.selected || {});
     close();
-    onConfirm(excludedTileIds);
+    onConfirm(selectedTileIds);
   });
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && !backdrop.classList.contains('hidden')) close();
@@ -404,20 +426,26 @@ function groupTilesForPreview(tiles) {
   return ordered;
 }
 
+// selected starts empty - nothing changes until you opt tiles in (by hand,
+// or via Select All), never everything-by-default. Static-build
+// replacement for GET /api/sprites/themes/:theme/preview - reads the
+// precomputed themeCoverage.json instead.
 function openChangeAllConfirm(theme, onConfirm) {
   var m = ensureChangeAllConfirmModal();
-  changeAllConfirmState = { theme: theme, onConfirm: onConfirm, excluded: {} };
+  changeAllConfirmState = { theme: theme, onConfirm: onConfirm, selected: {}, covered: [] };
   m.title.textContent = 'Change all to "' + theme + '"';
   m.note.textContent = '';
   m.list.textContent = 'Loading…';
   m.backdrop.classList.remove('hidden');
 
-  fetch('/api/sprites/themes/' + encodeURIComponent(theme) + '/preview').then(function (res) { return res.json(); }).then(function (data) {
+  fetch('./assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (coverageByTheme) {
     if (!changeAllConfirmState || changeAllConfirmState.theme !== theme) return; // superseded by a newer pick
 
-    var covered = (data.tiles || []).filter(function (t) { return t.covered; });
-    var skipped = (data.tiles || []).length - covered.length;
-    m.note.textContent = 'Click a tile to exclude it from this change. '
+    var allTiles = coverageByTheme[theme] || [];
+    var covered  = allTiles.filter(function (t) { return t.covered; });
+    var skipped  = allTiles.length - covered.length;
+    changeAllConfirmState.covered = covered;
+    m.note.textContent = 'Click a tile to select it for this change, or Select All. '
       + (skipped
         ? (skipped + ' tile' + (skipped === 1 ? '' : 's') + ' this theme doesn\'t cover will keep their current texture regardless.')
         : '');
@@ -427,8 +455,9 @@ function openChangeAllConfirm(theme, onConfirm) {
   });
 }
 
-// Re-rendered on every exclude toggle - cheap (at most a few dozen cells)
-// and keeps the gray-out state trivially in sync with changeAllConfirmState.excluded.
+// Re-rendered on every selection toggle - cheap (at most a few dozen cells)
+// and keeps the highlighted state trivially in sync with
+// changeAllConfirmState.selected.
 function renderChangeAllConfirmList(m, covered) {
   var state = changeAllConfirmState;
   m.list.textContent = '';
@@ -445,11 +474,11 @@ function renderChangeAllConfirmList(m, covered) {
     m.list.appendChild(header);
 
     group.tiles.forEach(function (tile) {
-      var excluded = !!state.excluded[tile.tileId];
+      var selected = !!state.selected[tile.tileId];
       var cell = document.createElement('div');
       cell.className = 'tppOption tppOptionStatic';
-      if (excluded) cell.classList.add('tppOptionExcluded');
-      cell.title = excluded ? 'Excluded - click to include it again' : 'Click to exclude from this change';
+      if (selected) cell.classList.add('active');
+      cell.title = selected ? 'Selected - click to deselect' : 'Click to select for this change';
 
       var img = document.createElement('img');
       img.src = tile.previewUrl;
@@ -460,8 +489,8 @@ function renderChangeAllConfirmList(m, covered) {
       cell.appendChild(name);
 
       cell.addEventListener('click', function () {
-        if (state.excluded[tile.tileId]) delete state.excluded[tile.tileId];
-        else state.excluded[tile.tileId] = true;
+        if (state.selected[tile.tileId]) delete state.selected[tile.tileId];
+        else state.selected[tile.tileId] = true;
         renderChangeAllConfirmList(m, covered);
       });
       m.list.appendChild(cell);
@@ -488,31 +517,38 @@ function buildTextureOptionCell(spriteId, previewUrl, label, currentSpriteId, on
   return cellBtn;
 }
 
-// Curated theme options + the leader's own uploads for one tile id, merged
-// into one list. Never rejects - a failed fetch just contributes nothing.
-// sourceTileName (optional): browse a DIFFERENT tile's sprites for this
-// slot - what lets a flag wear the spike texture. Omitted means the slot's
-// own tile, which is what opening the editor on a tile normally wants.
-// Resolves { options, sources, sourceTileName } so the caller can render
-// the source tab strip from the same response.
+// Curated theme options + this browser's own local uploads for one tile id,
+// merged into one list. Never rejects - a failed fetch just contributes
+// nothing. Static-build replacement for the /api/sprites/tiles/:id/options +
+// /api/custom-sprites pair: options come from the precomputed tileOptions.json
+// (no cross-tile source browsing in this build - `sources` is always just
+// the tile's own name), uploads from localTexturePrefs' IndexedDB store.
 //
 // Custom uploads are not filtered by tile: an upload made for one slot is a
 // valid pick for any other, same as a curated sprite.
+var tileOptionsCache = null;
 function fetchTextureOptionsFor(tileId, sourceTileName) {
-  var optionsUrl = '/api/sprites/tiles/' + encodeURIComponent(tileId) + '/options'
-    + (sourceTileName ? '?source=' + encodeURIComponent(sourceTileName) : '');
+  var optionsPromise = (tileOptionsCache
+    ? Promise.resolve(tileOptionsCache)
+    : fetch('./assets/tileOptions.json').then(function (res) { return res.json(); }).then(function (data) {
+        tileOptionsCache = data;
+        return data;
+      })
+  ).then(function (all) { return all[tileId] || { options: [], sources: [], sourceTileName: sourceTileName || null }; })
+   .catch(function () { return { options: [], sources: [], sourceTileName: sourceTileName || null }; });
+
   return Promise.all([
-    fetch(optionsUrl)
-      .then(function (res) { return res.json(); }).catch(function () { return { options: [] }; }),
-    fetch('/api/custom-sprites')
-      .then(function (res) { return res.json(); }).catch(function () { return { sprites: [] }; }),
+    optionsPromise,
+    localTexturePrefs.listUploads().catch(function () { return []; }),
   ]).then(function (results) {
     var combined = [];
     (results[0].options || []).forEach(function (option) {
       combined.push({ spriteId: option.spriteId, previewUrl: option.previewUrl, label: option.theme });
+      customUploadUrlCache[option.spriteId] = option.previewUrl;
     });
-    (results[1].sprites || []).forEach(function (sprite) {
-      combined.push({ spriteId: sprite.spriteId, previewUrl: sprite.previewUrl, label: sprite.label });
+    results[1].forEach(function (upload) {
+      combined.push({ spriteId: upload.spriteId, previewUrl: upload.previewUrl, label: upload.label });
+      customUploadUrlCache[upload.spriteId] = upload.previewUrl;
     });
     return {
       options: combined,
@@ -530,22 +566,26 @@ function reportTextureError(message) {
   else console.error('[texture] ' + message);
 }
 
+// Static-build replacement for POST /api/custom-sprites: no server, no DB
+// row - the file goes straight into localTexturePrefs' IndexedDB store and
+// gets a spriteId of the same "tileName/theme"-shaped form the curated
+// sprites use (theme = "custom-<uuid>"), so every other file in this picker
+// (buildTextureOptionCell, spriteFileUrl, the picks map) treats it exactly
+// like a curated pick with no special-casing.
 function uploadCustomTexture(tileId, fileInput, labelInput, uploadBtn, onDone) {
   var file = fileInput.files[0];
   if (!file) return;
 
-  var label = encodeURIComponent(labelInput.value || '');
-  var url = '/api/custom-sprites?tileId=' + encodeURIComponent(tileId) + '&label=' + label;
+  var tileName = (tileOptionsCache && tileOptionsCache[tileId] && tileOptionsCache[tileId].tileName) || null;
 
   uploadBtn.disabled = true;
-  fetch(url, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file })
-    .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
-    .then(function (result) {
+  localTexturePrefs.saveUpload(file, labelInput.value || 'upload', tileName)
+    .then(function (uploaded) {
       uploadBtn.disabled = false;
-      if (!result.ok) { reportTextureError('upload failed: ' + (result.data.error || 'unknown error')); return; }
       fileInput.value = '';
       labelInput.value = '';
-      onDone(result.data); // { spriteId, previewUrl } - lets the caller auto-stage the fresh upload
+      customUploadUrlCache[uploaded.spriteId] = uploaded.previewUrl;
+      onDone(uploaded); // { spriteId, previewUrl, label } - lets the caller auto-stage the fresh upload
     })
     .catch(function () {
       uploadBtn.disabled = false;
@@ -553,12 +593,18 @@ function uploadCustomTexture(tileId, fileInput, labelInput, uploadBtn, onDone) {
     });
 }
 
-// spriteId is always "tileName/theme" (server/db.js); a custom upload's id
-// matches its on-disk filename minus the extension, so the URL rebuilds
-// from spriteId alone.
+// Object URLs for local (IndexedDB) uploads have to be created async
+// (blob read), but spriteFileUrl is called from sync render code - this
+// cache is filled by fetchTextureOptionsFor/uploadCustomTexture as uploads
+// are seen, which happens before anything tries to render one.
+var customUploadUrlCache = {};
+
+// spriteId is always "tileName/theme" - a local upload's theme is
+// "custom-<uuid>" (see localTexturePrefs.saveUpload).
 function spriteFileUrl(spriteId) {
   var theme = spriteId.split('/')[1] || '';
-  return (theme.indexOf('custom-') === 0 ? '/sprites-custom/' : '/sprites/') + spriteId + '.png';
+  if (theme.indexOf('custom-') === 0) return customUploadUrlCache[spriteId] || '';
+  return './assets/sprites/' + spriteId + '.png';
 }
 
 function downloadTexture(spriteId, label) {

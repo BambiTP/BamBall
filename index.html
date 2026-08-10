@@ -14,7 +14,9 @@
   #joinRedBtn { background: #cc3333; }
   #joinBlueBtn { background: #3355cc; }
   .hidden { display: none !important; }
+  #texturePackPicker { position: absolute; bottom: 8px; right: 8px; max-width: 420px; max-height: 60vh; overflow: auto; background: rgba(20,20,20,0.85); border-radius: 8px; padding: 8px; color: #fff; }
 </style>
+<link rel="stylesheet" href="shared/texturePackPicker.css">
 </head>
 <body>
 <div id="viewport"></div>
@@ -98,7 +100,10 @@
 <script src="client/app/stateWiring.js"></script>
 
 <script src="client/ui/hud.js"></script>
+<script src="client/ui/textureBrowser.js"></script>
 
+<script src="local/localTexturePrefs.js"></script>
+<script src="shared/texturePackPicker.js"></script>
 <script src="local/localTransport.js"></script>
 <script src="local/joinUI.js"></script>
 <script src="local/main.js"></script>

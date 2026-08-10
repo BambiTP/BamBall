@@ -34,10 +34,27 @@ function mountTexturePackPicker(container, opts) {
   container.classList.add('texturePackPicker');
 
   var view = 'pack';       // 'pack' | 'gallery'
-  var groupsCache = null;  // /api/sprites/tiles groups, in display order
+  var groupsCache = null;  // static tileGroups.json's groups, in display order, with local picks layered on
   var themesCache = null;
   var gallerySearch = '';
   var selectedTheme = null;
+
+  // Layers this browser's saved picks (localTexturePrefs) on top of the
+  // static default assignment baked into tileGroups.json at build time -
+  // the static file is the same for everyone, the picks are per-browser.
+  function applyLocalPicks(groups) {
+    var picks = localTexturePrefs.getPicks();
+    groups.forEach(function (g) {
+      g.tiles.forEach(function (tile) {
+        var picked = picks[tile.tileId];
+        if (!picked) return;
+        tile.currentSpriteId = picked;
+        tile.currentTheme    = picked.split('/')[1] || null;
+        tile.previewUrl      = spriteFileUrl(picked);
+      });
+    });
+    return groups;
+  }
 
   var root = document.createElement('div');
   container.appendChild(root);
@@ -100,16 +117,10 @@ function mountTexturePackPicker(container, opts) {
       sourceTabs: true,
       uploadable: true,
       onPick: function (option) {
-        fetch('/api/sprites/select', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ tileId: tile.tileId, spriteId: option.spriteId }),
-        }).then(function (res) {
-          if (!res.ok) throw new Error('save failed');
-          groupsCache = null;
-          render();
-          if (typeof opts.onSelect === 'function') opts.onSelect(tile.tileId, option.spriteId);
-        }).catch(function () {});
+        localTexturePrefs.setPick(tile.tileId, option.spriteId);
+        groupsCache = null;
+        render();
+        if (typeof opts.onSelect === 'function') opts.onSelect(tile.tileId, option.spriteId);
       },
     });
   }
@@ -171,8 +182,8 @@ function mountTexturePackPicker(container, opts) {
     renderTiles();
 
     if (!groupsCache) {
-      fetch('/api/sprites/tiles').then(function (res) { return res.json(); }).then(function (data) {
-        groupsCache = data.groups || [];
+      fetch('./assets/tileGroups.json').then(function (res) { return res.json(); }).then(function (data) {
+        groupsCache = applyLocalPicks(data.groups || []);
         renderTiles();
       }).catch(function () {
         body.textContent = 'Failed to load tiles.';
@@ -184,21 +195,28 @@ function mountTexturePackPicker(container, opts) {
 
   // ---- GALLERY ------------------------------------------------------------
 
+  // selectedTileIds: from openChangeAllConfirm - only these tiles change,
+  // default nothing (opt-in, not opt-out - see that function).
   function applyTheme(theme) {
     if (!loggedIn) return;
-    openChangeAllConfirm(theme, function (excludedTileIds) {
-      fetch('/api/sprites/select-all', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ theme: theme, excludeTileIds: excludedTileIds }),
-      }).then(function (res) {
-        if (!res.ok) throw new Error('save failed');
+    openChangeAllConfirm(theme, function (selectedTileIds) {
+      var picks = {};
+      selectedTileIds.forEach(function (tileId) { picks[tileId] = null; }); // filled in below once coverage is known
+      fetch('./assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (coverage) {
+        var tiles = coverage[theme] || [];
+        var byId = {};
+        tiles.forEach(function (t) { byId[t.tileId] = t; });
+        selectedTileIds.forEach(function (tileId) {
+          var t = byId[tileId];
+          if (t && t.covered) picks[tileId] = t.tileName + '/' + theme;
+        });
+        localTexturePrefs.setManyPicks(picks);
         groupsCache = null;
         selectedTheme = null;
         view = 'pack';
         render();
         if (typeof opts.onSelect === 'function') opts.onSelect(null, null);
-      }).catch(function () {});
+      });
     });
   }
 
@@ -244,11 +262,14 @@ function mountTexturePackPicker(container, opts) {
       name.textContent = selectedTheme;
       preview.appendChild(name);
 
+      // No contact-sheet compositor in this static build (server/assets/
+      // contactSheetBuilder.js is Node/Jimp-only) - the small pre-baked
+      // theme-preview swatch stands in, same image the gallery grid uses.
       var sheet = document.createElement('div');
       sheet.className = 'tppPackSheet';
       var img = document.createElement('img');
       img.alt = selectedTheme + ' pack';
-      img.src = '/api/sprites/themes/' + encodeURIComponent(selectedTheme) + '/contact-sheet';
+      img.src = './assets/themePreviews/' + encodeURIComponent(selectedTheme) + '.png';
       sheet.appendChild(img);
       preview.appendChild(sheet);
 
@@ -287,7 +308,7 @@ function mountTexturePackPicker(container, opts) {
         var img = document.createElement('img');
         img.alt = theme;
         img.loading = 'lazy';
-        img.src = '/generated/theme-previews/' + theme + '.png';
+        img.src = './assets/themePreviews/' + theme + '.png';
         cell.appendChild(img);
         var label = document.createElement('span');
         label.textContent = theme;
@@ -305,7 +326,7 @@ function mountTexturePackPicker(container, opts) {
     renderPreview();
 
     if (!themesCache) {
-      fetch('/api/sprites/themes').then(function (res) { return res.json(); }).then(function (data) {
+      fetch('./assets/themes.json').then(function (res) { return res.json(); }).then(function (data) {
         themesCache = data.themes || [];
         renderGrid();
       }).catch(function () {

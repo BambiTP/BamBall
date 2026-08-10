@@ -22,6 +22,13 @@ function start() {
   initHud();
   initJoinUI();
 
+  // Browsable and persists picks to localStorage/IndexedDB now (see
+  // local/localTexturePrefs.js) - live re-texturing of the rendered game
+  // from an arbitrary pick still needs a client-side sheet packer
+  // (server/assets/buildSpriteSheet.js's job, done with Canvas instead of
+  // Jimp), tracked as a follow-up rather than built here.
+  mountTexturePackPicker(document.getElementById('texturePackPicker'), { loggedIn: true });
+
   var canvas = document.getElementById('viewport');
   renderer = new Renderer(canvas);
 
