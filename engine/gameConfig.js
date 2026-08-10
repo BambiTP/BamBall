@@ -1,3 +1,4 @@
+(function () {
 const gameConfig = {
   defaultMapId: 97675,
 
@@ -111,3 +112,4 @@ const gameConfig = {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = gameConfig;
 if (typeof globalThis !== 'undefined') globalThis.gameConfig = gameConfig;
+})();

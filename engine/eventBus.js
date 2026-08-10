@@ -1,3 +1,4 @@
+(function () {
 // eventBus.js - tiny synchronous pub/sub, promoted from
 // client/game/state/eventBus.js to web/engine/ so the same factory backs
 // both GameInstance's server-side-shaped emitter (game/gameInstance.js,
@@ -38,3 +39,5 @@ function createEventBus() {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = { createEventBus: createEventBus };
 if (typeof globalThis !== 'undefined') globalThis.createEventBus = createEventBus;
+
+})();

@@ -1,3 +1,4 @@
+(function () {
 const { playerSetting } = (typeof require === 'function') ? require('./settingsResolver') : globalThis.SettingsResolver;
 
 // Final value of a stat: a leader's per-player override if one exists,
@@ -259,3 +260,5 @@ createPlayerLifecycle.setPlayerTimer = setPlayerTimer;
 createPlayerLifecycle.clearPlayerTimer = clearPlayerTimer;
 if (typeof module !== 'undefined' && module.exports) module.exports = createPlayerLifecycle;
 if (typeof globalThis !== 'undefined') globalThis.createPlayerLifecycle = createPlayerLifecycle;
+
+})();

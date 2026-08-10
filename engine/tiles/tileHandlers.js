@@ -1,3 +1,4 @@
+(function () {
 // tileHandlers.js - the logic helper file. Every function here is the full
 // behavior for one tile interaction. tileLogic.js is only allowed to do
 // name/team/state checks and then call exactly one of these.
@@ -197,3 +198,4 @@ var createTileHandlers = function createTileHandlers(gameState, gameHelpers, phy
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createTileHandlers;
 if (typeof globalThis !== 'undefined') globalThis.createTileHandlers = createTileHandlers;
+})();

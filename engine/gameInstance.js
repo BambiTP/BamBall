@@ -1,3 +1,4 @@
+(function () {
 // Isomorphic: require() in Node, or the matching <script>-loaded global in
 // a browser (web/index.html loads every engine/ file in dependency order).
 var createEventBus  = (typeof require === 'function') ? require('./eventBus').createEventBus : globalThis.createEventBus;
@@ -710,3 +711,4 @@ class GameInstance {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = GameInstance;
 if (typeof globalThis !== 'undefined') globalThis.GameInstance = GameInstance;
+})();

@@ -1,3 +1,4 @@
+(function () {
 const { validateSettings } = (typeof require === 'function') ? require('./matchSettings') : globalThis.MatchSettings;
 const { SCHEMA, SCHEMA_BY_KEY, coerce, applyPartial } = (typeof require === 'function') ? require('./settingsSchema') : globalThis.SettingsSchema;
 
@@ -593,3 +594,4 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createMatchManager;
 if (typeof globalThis !== 'undefined') globalThis.createMatchManager = createMatchManager;
+})();

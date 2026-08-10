@@ -1,3 +1,4 @@
+(function () {
 const { TILE_ID }   = (typeof require === 'function') ? require('./tiles/physicsData') : globalThis.PhysicsData;
 const { tileToWorld } = (typeof require === 'function') ? require('./coords') : globalThis.Coords;
 
@@ -437,3 +438,5 @@ var createMapWiring = function(gameState, gameHelpers, physicsLookup, emitter) {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createMapWiring;
 if (typeof globalThis !== 'undefined') globalThis.createMapWiring = createMapWiring;
+
+})();

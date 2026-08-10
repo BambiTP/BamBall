@@ -1,3 +1,4 @@
+(function () {
 // Flag pickup/return/transfer/capture. Split out of gameHelpers.js
 // (CODEBASE_AUDIT.md) - scheduleTileChange is a shared primitive that lives
 // on gameHelpers.js itself; these methods reach it via `this.` since the
@@ -57,3 +58,5 @@ var createFlagLogic = function(gameState, config, emitter) {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createFlagLogic;
 if (typeof globalThis !== 'undefined') globalThis.createFlagLogic = createFlagLogic;
+
+})();

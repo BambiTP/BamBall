@@ -1,3 +1,4 @@
+(function () {
 // customTileActions.js - runs the action list a leader attached to one of
 // their custom tiles (server/db.js custom_tiles.actions) against whichever
 // player touched it. Called from tileLogic.js's playerBegin dispatch,
@@ -79,3 +80,5 @@ var createCustomTileActions = function createCustomTileActions(gameState, gameHe
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createCustomTileActions;
 if (typeof globalThis !== 'undefined') globalThis.createCustomTileActions = createCustomTileActions;
+
+})();

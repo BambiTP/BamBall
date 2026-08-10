@@ -1,3 +1,4 @@
+(function () {
 const TILE_SIZE = 40;
 
 function tileToWorld(x, y) {
@@ -19,3 +20,4 @@ function tilesToPixels(tiles) {
 var Coords = { TILE_SIZE, tileToWorld, worldToTile, pixelsToTiles, tilesToPixels };
 if (typeof module !== 'undefined' && module.exports) module.exports = Coords;
 if (typeof globalThis !== 'undefined') globalThis.Coords = Coords;
+})();

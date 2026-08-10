@@ -1,3 +1,4 @@
+(function () {
 const { applyPartial } = (typeof require === 'function') ? require('./settingsSchema') : globalThis.SettingsSchema;
 
 const DEFAULT_SETTINGS = {
@@ -19,3 +20,5 @@ function validateSettings(partial, current) {
 var MatchSettings = { createDefaultSettings, validateSettings, DEFAULT_SETTINGS };
 if (typeof module !== 'undefined' && module.exports) module.exports = MatchSettings;
 if (typeof globalThis !== 'undefined') globalThis.MatchSettings = MatchSettings;
+
+})();

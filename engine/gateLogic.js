@@ -1,3 +1,4 @@
+(function () {
 const { tileToWorld } = (typeof require === 'function') ? require('./coords') : globalThis.Coords;
 const { TILE_ID }     = (typeof require === 'function') ? require('./tiles/physicsData') : globalThis.PhysicsData;
 
@@ -70,3 +71,5 @@ var createGateLogic = function(gameState, physicsHelpers, config, emitter) {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createGateLogic;
 if (typeof globalThis !== 'undefined') globalThis.createGateLogic = createGateLogic;
+
+})();

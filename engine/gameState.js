@@ -1,3 +1,4 @@
+(function () {
 const { createDefaultSettings } = (typeof require === 'function') ? require('./matchSettings') : globalThis.MatchSettings;
 
 class GameState {
@@ -99,3 +100,4 @@ class GameState {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = GameState;
 if (typeof globalThis !== 'undefined') globalThis.GameState = GameState;
+})();

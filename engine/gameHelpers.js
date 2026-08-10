@@ -1,3 +1,4 @@
+(function () {
 const { tileSetting: resolveTileSetting } = (typeof require === 'function') ? require('./settingsResolver') : globalThis.SettingsResolver;
 var createPlayerLifecycle = (typeof require === 'function') ? require('./playerLifecycle') : globalThis.createPlayerLifecycle;
 var createFlagLogic       = (typeof require === 'function') ? require('./flagLogic') : globalThis.createFlagLogic;
@@ -74,3 +75,5 @@ var createGameHelpers = function(gameState, physicsHelpers, physicsWorld, config
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createGameHelpers;
 if (typeof globalThis !== 'undefined') globalThis.createGameHelpers = createGameHelpers;
+
+})();

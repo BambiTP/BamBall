@@ -1,3 +1,4 @@
+(function () {
 // settingsSchema.js - single source of truth for every leader-adjustable
 // setting: room-wide physics/gameplay numbers, per-player overrides, and
 // match-level rules. Adding a new setting means adding one entry here;
@@ -209,3 +210,5 @@ function applyPartial(partial, current, { allowKey } = {}) {
 var SettingsSchema = { SCHEMA, SCHEMA_BY_KEY, coerce, applyPartial };
 if (typeof module !== 'undefined' && module.exports) module.exports = SettingsSchema;
 if (typeof globalThis !== 'undefined') globalThis.SettingsSchema = SettingsSchema;
+
+})();

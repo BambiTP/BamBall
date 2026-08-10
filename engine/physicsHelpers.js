@@ -1,3 +1,4 @@
+(function () {
 var ForceFields = (typeof require === 'function') ? require('../shared/forceFields') : globalThis.ForceFields;
 const { movePlayerVelocity } = (typeof require === 'function') ? require('../shared/movement') : globalThis;
 const { tileSetting } = (typeof require === 'function') ? require('./settingsResolver') : globalThis.SettingsResolver;
@@ -123,3 +124,4 @@ var createPhysicsHelpers = function(physicsWorld, gameState, config) {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createPhysicsHelpers;
 if (typeof globalThis !== 'undefined') globalThis.createPhysicsHelpers = createPhysicsHelpers;
+})();

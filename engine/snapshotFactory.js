@@ -1,3 +1,4 @@
+(function () {
 const { TILE_SIZE } = (typeof require === 'function') ? require('./coords') : globalThis.Coords;
 
 // Edit mode drops the distance check entirely - the leader can pan/zoom
@@ -274,3 +275,4 @@ function createSnapshotFactory(gameState, config) {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createSnapshotFactory;
 if (typeof globalThis !== 'undefined') globalThis.createSnapshotFactory = createSnapshotFactory;
+})();

@@ -1,3 +1,4 @@
+(function () {
 // mapFormat.js - the canonical stored-map document, and how it becomes the
 // runtime structures the engine actually reads.
 //
@@ -252,3 +253,5 @@ var MapFormat = {
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = MapFormat;
 if (typeof globalThis !== 'undefined') globalThis.MapFormat = MapFormat;
+
+})();

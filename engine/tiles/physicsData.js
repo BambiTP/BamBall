@@ -1,3 +1,4 @@
+(function () {
 var physicsData = [
   { id: 1,    name: 'Wall',              category: 'wall',            type: 'square',  size: 40, sensor: false },
   // The 45 slopes share the square wall's category so a wall->slope
@@ -79,3 +80,4 @@ const TILE_ID = Object.fromEntries(physicsData.map(t => [t.name.toUpperCase(), t
 physicsData.TILE_ID = TILE_ID;
 if (typeof module !== 'undefined' && module.exports) module.exports = physicsData;
 if (typeof globalThis !== 'undefined') globalThis.PhysicsData = physicsData;
+})();

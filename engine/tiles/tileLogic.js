@@ -1,3 +1,4 @@
+(function () {
 // tileLogic.js - the logic dispatch file. Rules for this file:
 //   - ifs may check tile name, player team, player flags, and match state
 //   - each if body is exactly one handler call from tileHandlers.js
@@ -237,3 +238,4 @@ var setupTileLogic = function setupTileLogic(instance) {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = setupTileLogic;
 if (typeof globalThis !== 'undefined') globalThis.setupTileLogic = setupTileLogic;
+})();

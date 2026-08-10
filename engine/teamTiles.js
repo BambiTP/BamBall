@@ -1,3 +1,4 @@
+(function () {
 // Team-owned floor tiles that buff whoever's standing on them. Split out of
 // gameHelpers.js (CODEBASE_AUDIT.md) - addModifier/tileSetting are shared
 // primitives (playerLifecycle.js / gameHelpers.js) reached here via `this.`
@@ -36,3 +37,5 @@ var createTeamTiles = function() {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createTeamTiles;
 if (typeof globalThis !== 'undefined') globalThis.createTeamTiles = createTeamTiles;
+
+})();

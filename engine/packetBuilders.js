@@ -1,3 +1,4 @@
+(function () {
 // packetBuilders.js - the send helper file. One function per outgoing packet
 // type; each takes trusted engine data and returns the packet object.
 // This is the ONLY place server->client packet shapes are defined.
@@ -264,3 +265,4 @@ if (typeof globalThis !== 'undefined') {
   globalThis.serializePlayer = serializePlayer;
   globalThis.tileCategoriesOf = tileCategoriesOf;
 }
+})();

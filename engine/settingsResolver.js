@@ -1,3 +1,4 @@
+(function () {
 // The one place "this scope's effective setting value" is resolved: a
 // leader's override for that scope wins, else the room-wide config default.
 // No dependency on gameHelpers/physicsHelpers so anything in the require
@@ -16,3 +17,5 @@ function playerSetting(player, config, key) {
 var SettingsResolver = { tileSetting, playerSetting };
 if (typeof module !== 'undefined' && module.exports) module.exports = SettingsResolver;
 if (typeof globalThis !== 'undefined') globalThis.SettingsResolver = SettingsResolver;
+
+})();

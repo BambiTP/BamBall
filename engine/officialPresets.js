@@ -1,3 +1,4 @@
+(function () {
 // officialPresets.js - the curated, code-shipped preset list for the
 // Presets tab's "Official Presets" sub-tab. Unlike a user's own presets
 // (server/db.js `presets` table, per-account), these belong to nobody and
@@ -55,3 +56,5 @@ const OFFICIAL_PRESETS = [
 var OfficialPresets = { OFFICIAL_PRESETS };
 if (typeof module !== 'undefined' && module.exports) module.exports = OfficialPresets;
 if (typeof globalThis !== 'undefined') globalThis.OfficialPresets = OfficialPresets;
+
+})();

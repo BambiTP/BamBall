@@ -1,3 +1,4 @@
+(function () {
 var POWERUP_TYPES = (typeof require === 'function') ? require('./tiles/powerupTypes') : globalThis.PowerupTypes;
 const { TILE_ID }   = (typeof require === 'function') ? require('./tiles/physicsData') : globalThis.PhysicsData;
 const { playerSetting } = (typeof require === 'function') ? require('./settingsResolver') : globalThis.SettingsResolver;
@@ -199,3 +200,5 @@ var createPowerupSpawner = function(gameState, physicsHelpers, config, emitter) 
 
 if (typeof module !== 'undefined' && module.exports) module.exports = createPowerupSpawner;
 if (typeof globalThis !== 'undefined') globalThis.createPowerupSpawner = createPowerupSpawner;
+
+})();

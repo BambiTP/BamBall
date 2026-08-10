@@ -1,3 +1,4 @@
+(function () {
 // powerupTypes.js - single source of truth for every powerup pad type: its
 // tile id and the group-setting key that turns it on/off. gameHelpers (spawn
 // selection) and tileLogic (pickup gating) both read this one table instead
@@ -10,3 +11,5 @@ var PowerupTypes = [
 ];
 if (typeof module !== 'undefined' && module.exports) module.exports = PowerupTypes;
 if (typeof globalThis !== 'undefined') globalThis.PowerupTypes = PowerupTypes;
+
+})();

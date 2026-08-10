@@ -1,3 +1,4 @@
+(function () {
 var Box2D = (typeof require === 'function') ? require('../shared/Box2dWeb-2.1.a.3') : globalThis.Box2D;
 const { tileToWorld, TILE_SIZE } = (typeof require === 'function') ? require('./coords') : globalThis.Coords;
 
@@ -219,3 +220,4 @@ makeBody(id, x, y, physicsLookup) {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = PhysicsWorld;
 if (typeof globalThis !== 'undefined') globalThis.PhysicsWorld = PhysicsWorld;
+})();
