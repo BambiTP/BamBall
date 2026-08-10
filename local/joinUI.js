@@ -3,6 +3,12 @@
 // real menu.js team-box click would make) - localTransport.js's `socket`
 // shim is what makes that work with no server.
 
+// fireInput.js's ball-click-to-open-settings path is leader-only - this
+// build has no leader role or settings panel to open, so it's always off.
+function isLeader() {
+  return false;
+}
+
 function initJoinUI() {
   var redBtn  = document.getElementById('joinRedBtn');
   var blueBtn = document.getElementById('joinBlueBtn');
