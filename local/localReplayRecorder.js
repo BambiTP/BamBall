@@ -103,10 +103,10 @@ function createLocalReplayRecorder(gameInstance) {
     if (typeof CompressionStream === 'function') {
       var stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
       return new Response(stream).blob().then(function (blob) {
-        return { blob: blob, filename: 'replay-' + startMs + '.ndjson.gz' };
+        return { blob: blob, filename: 'replay-' + startMs + '.ndjson.gz', gzip: true };
       });
     }
-    return Promise.resolve({ blob: new Blob([text], { type: 'application/x-ndjson' }), filename: 'replay-' + startMs + '.ndjson' });
+    return Promise.resolve({ blob: new Blob([text], { type: 'application/x-ndjson' }), filename: 'replay-' + startMs + '.ndjson', gzip: false });
   }
 
   function isEnded() {
@@ -129,4 +129,21 @@ function downloadBlob(blob, filename) {
   a.click();
   a.remove();
   setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+// Stores a finished recording permanently at bamball-worker's
+// /replays/<roomCode> (confirmed requirement: replays live on the server,
+// keyed by the room's own unique code, forever). X-Replay-Gzip tells the
+// Worker whether to hand it back as opaque gzip bytes or plain text - see
+// worker/src/index.js's header comment for why this isn't a normal
+// Content-Encoding.
+function uploadReplay(workerUrl, roomCode, blob, gzip) {
+  return fetch(workerUrl + '/api/replays/' + roomCode, {
+    method: 'PUT',
+    headers: { 'X-Replay-Gzip': gzip ? '1' : '0' },
+    body: blob,
+  }).then(function (res) {
+    if (!res.ok) throw new Error('replay upload failed: ' + res.status);
+    return res.json();
+  });
 }

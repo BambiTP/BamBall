@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bamball-worker",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "r2_buckets": [
+    {
+      "binding": "REPLAYS",
+      "bucket_name": "bamball-replays"
+    }
+  ]
+}

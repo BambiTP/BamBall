@@ -15,11 +15,51 @@
 // only ever one local client here.
 
 var localTransport = (function () {
+  var WORKER_URL = 'https://bamball-worker.zomball.workers.dev';
+
   var gi = null;
   var recorder = null;
+  var roomCode = null; // minted by the Worker at boot - see requestRoomCode()
   var localId = 1;
   var client = { id: localId, team: 'spectator' };
   var account = { display_name: 'Player' };
+
+  // Every room gets a unique, permanent code from the Worker (confirmed
+  // requirement) - it's what a finished replay gets stored/found under
+  // (WORKER_URL + '/replays/' + roomCode). Best-effort: if the Worker is
+  // unreachable, the game still boots and plays fine, it just has no
+  // replay home to upload to (recorder.finish() still works, the download
+  // fallback still fires - see the matchEnd handler below).
+  function requestRoomCode() {
+    return fetch(WORKER_URL + '/api/rooms', { method: 'POST' })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        roomCode = data.code || null;
+        if (roomCode) console.log('[localTransport] room code: ' + roomCode + ' (replay will be at ' + WORKER_URL + '/replays/' + roomCode + ')');
+        return roomCode;
+      })
+      .catch(function (err) {
+        console.warn('[localTransport] could not reach the room server, playing without one:', err);
+        return null;
+      });
+  }
+
+  // Uploads a finished recording to its room's permanent URL, if this
+  // session got a room code at all. Failures are logged, not thrown - a
+  // player's local download (matchEnd handler below) is never blocked on
+  // the network round-trip to the Worker succeeding.
+  function persistRecording(result) {
+    if (!roomCode) return Promise.resolve(null);
+    return uploadReplay(WORKER_URL, roomCode, result.blob, result.gzip)
+      .then(function (data) {
+        console.log('[localTransport] replay saved at ' + WORKER_URL + data.url);
+        return data;
+      })
+      .catch(function (err) {
+        console.warn('[localTransport] replay upload failed:', err);
+        return null;
+      });
+  }
 
   // engine event name -> packet builder, the same table
   // server/packets/outgoing.js's EVENT_MAP uses - kept in sync by hand
@@ -70,6 +110,7 @@ var localTransport = (function () {
       if (!recorder.isRecording()) return;
       recorder.finish(data).then(function (result) {
         downloadBlob(result.blob, result.filename);
+        persistRecording(result);
       });
     });
 
@@ -186,6 +227,7 @@ var localTransport = (function () {
   // for starting the client's own prediction loop (client/game/loop.js)
   // separately, same as the real client does against a real server.
   function boot() {
+    requestRoomCode(); // fire-and-forget in parallel - never blocks the map/game from loading
     return fetch('./assets/maps/default.json')
       .then(function (res) { return res.json(); })
       .then(function (mapDoc) {
@@ -229,7 +271,7 @@ var localTransport = (function () {
     if (!recorder || !recorder.isRecording()) return Promise.resolve(false);
     return recorder.finish({ scores: gi.gameState.scores, manual: true }).then(function (result) {
       downloadBlob(result.blob, result.filename);
-      return true;
+      return persistRecording(result).then(function () { return true; });
     });
   }
 
@@ -237,5 +279,6 @@ var localTransport = (function () {
     boot: boot, localId: localId,
     startRecording: startRecording, stopRecording: stopRecording,
     isRecording: isRecording, saveRecording: saveRecording,
+    getRoomCode: function () { return roomCode; },
   };
 })();
