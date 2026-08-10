@@ -23,14 +23,9 @@ function start() {
   initJoinUI();
   initMenu();
   initSettingsFilesUI();
-  initSettingsMaker();
-
-  // Browsable and persists picks to localStorage/IndexedDB now (see
-  // local/localTexturePrefs.js) - live re-texturing of the rendered game
-  // from an arbitrary pick still needs a client-side sheet packer
-  // (server/assets/buildSpriteSheet.js's job, done with Canvas instead of
-  // Jimp), tracked as a follow-up rather than built here.
-  mountTexturePackPicker(document.getElementById('texturePackPicker'), { loggedIn: true });
+  // Textures and Settings Maker tabs build their DOM/fetch their data
+  // lazily, the first time you actually open them (see local/menu.js) -
+  // not here at boot, while they're sitting hidden behind the Esc menu.
 
   var canvas = document.getElementById('viewport');
   renderer = new Renderer(canvas);

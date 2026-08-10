@@ -9,6 +9,18 @@ function toggleMenu() {
   document.getElementById('menu').classList.toggle('hidden');
 }
 
+// Tabs that build real DOM/fetch data (Textures, Settings Maker) only do
+// so the first time they're actually opened, not at page load while
+// they're sitting hidden - a hidden tab building a 50-tile grid + JSON
+// fetch before the game has even booted is pure wasted work at exactly
+// the moment the page is already doing the most (engine boot, texture
+// fetch, physics world setup).
+var lazyTabInit = {
+  texturesPanel: function () { mountTexturePackPicker(document.getElementById('texturePackPicker'), { loggedIn: true }); },
+  makerPanel: function () { initSettingsMaker(); },
+};
+var lazyTabDone = {};
+
 function switchMenuTab(tabId) {
   var buttons = document.querySelectorAll('.menuTabBtn');
   for (var i = 0; i < buttons.length; i++) {
@@ -17,6 +29,11 @@ function switchMenuTab(tabId) {
   var panels = document.querySelectorAll('.menuPanel');
   for (var j = 0; j < panels.length; j++) {
     panels[j].classList.toggle('hidden', panels[j].id !== tabId);
+  }
+
+  if (lazyTabInit[tabId] && !lazyTabDone[tabId]) {
+    lazyTabDone[tabId] = true;
+    lazyTabInit[tabId]();
   }
 }
 
