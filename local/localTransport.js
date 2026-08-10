@@ -16,6 +16,7 @@
 
 var localTransport = (function () {
   var gi = null;
+  var recorder = null;
   var localId = 1;
   var client = { id: localId, team: 'spectator' };
   var account = { display_name: 'Player' };
@@ -47,12 +48,29 @@ var localTransport = (function () {
     Object.keys(EVENT_MAP).forEach(function (event) {
       var builder = EVENT_MAP[event];
       gi.emitter.on(event, function () {
-        packetRouter.dispatch(builder.apply(null, arguments));
+        var packet = builder.apply(null, arguments);
+        packetRouter.dispatch(packet);
+        recorder.recordBroadcast(packet);
       });
     });
 
     gi.emitter.on('matchStateChanged', function () {
       packetRouter.dispatch(packetBuilders.matchState(gi.gameState));
+      recorder.recordBroadcast(packetBuilders.matchState(gi.gameState));
+
+      // Matches the real server's rule (server/packets/outgoing.js): a
+      // fresh match going live always starts recording, if a host hasn't
+      // already started one by hand during pregame warm-up.
+      if (gi.gameState.state === 'countdown' && !recorder.isRecording() && !recorder.isEnded()) {
+        recorder.start(mapDataFrom(gi.gameState));
+      }
+    });
+
+    gi.emitter.on('matchEnd', function (data) {
+      if (!recorder.isRecording()) return;
+      recorder.finish(data).then(function (result) {
+        downloadBlob(result.blob, result.filename);
+      });
     });
 
     // Only the collecting player needs their own effect timer.
@@ -65,6 +83,13 @@ var localTransport = (function () {
     gi.emitter.on('snapshot', function (deltas) {
       var delta = deltas.get(localId);
       if (delta) packetRouter.dispatch(packetBuilders.snapshot(delta));
+    });
+
+    // The un-culled, globally-deduplicated equivalent of 'snapshot' - see
+    // game/snapshotFactory.js's buildReplayDelta - fed to the recorder
+    // regardless of whether anyone's watching live, same as the server.
+    gi.emitter.on('replayPlayers', function (delta) {
+      recorder.recordPlayerDelta(delta);
     });
   }
 
@@ -116,6 +141,7 @@ var localTransport = (function () {
     player.right = !!packet.right;
     player.up    = !!packet.up;
     player.down  = !!packet.down;
+    recorder.recordInput(localId, packet);
   }
 
   function handleOutgoing(packet) {
@@ -164,6 +190,7 @@ var localTransport = (function () {
       .then(function (res) { return res.json(); })
       .then(function (mapDoc) {
         gi = new GameInstance(gameConfig, 'game');
+        recorder = createLocalReplayRecorder(gi);
         wireEngineEvents();
         gi.loadMap(mapDoc);
 
@@ -176,5 +203,39 @@ var localTransport = (function () {
       });
   }
 
-  return { boot: boot, localId: localId };
+  // Manual recording control (confirmed requirement: pregame can be
+  // recorded on demand, not only automatically at match start). Starting
+  // by hand during pregame needs a mapData snapshot too, since it may run
+  // before the automatic countdown-triggered start ever would.
+  function startRecording() {
+    if (!gi || !recorder) return false;
+    recorder.start(mapDataFrom(gi.gameState));
+    return true;
+  }
+
+  function stopRecording() {
+    if (!recorder) return;
+    recorder.stop();
+  }
+
+  function isRecording() {
+    return !!recorder && recorder.isRecording();
+  }
+
+  // Ends the recording now (not just pausing it) and downloads it, whether
+  // or not the match itself has ended - a host can save a pregame-only
+  // clip this way without waiting for a real match to finish.
+  function saveRecording() {
+    if (!recorder || !recorder.isRecording()) return Promise.resolve(false);
+    return recorder.finish({ scores: gi.gameState.scores, manual: true }).then(function (result) {
+      downloadBlob(result.blob, result.filename);
+      return true;
+    });
+  }
+
+  return {
+    boot: boot, localId: localId,
+    startRecording: startRecording, stopRecording: stopRecording,
+    isRecording: isRecording, saveRecording: saveRecording,
+  };
 })();
