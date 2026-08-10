@@ -9,22 +9,47 @@
   #hud { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); color: #fff; text-align: center; text-shadow: 0 1px 2px #000; pointer-events: none; }
   #hudScore { font-size: 20px; font-weight: bold; }
   #hudTimer { font-size: 14px; opacity: 0.8; }
+  #hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); color: #aaa; font-size: 12px; }
   #joinPanel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; gap: 16px; }
   #joinPanel button { font-size: 22px; padding: 14px 36px; border: none; border-radius: 6px; cursor: pointer; color: #fff; }
   #joinRedBtn { background: #cc3333; }
   #joinBlueBtn { background: #3355cc; }
   .hidden { display: none !important; }
-  #texturePackPicker { position: absolute; bottom: 8px; right: 8px; max-width: 420px; max-height: 60vh; overflow: auto; background: rgba(20,20,20,0.85); border-radius: 8px; padding: 8px; color: #fff; }
-  #leaderPanel { position: absolute; top: 8px; left: 8px; background: rgba(20,20,20,0.85); border-radius: 8px; padding: 10px; color: #fff; font-size: 13px; width: 220px; }
-  #leaderPanel h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; opacity: 0.7; }
-  #leaderPanel .settingsSlot { margin-bottom: 10px; }
-  #leaderPanel label { display: block; margin-bottom: 2px; }
-  #leaderPanel input[type="file"] { width: 100%; font-size: 11px; color: #ccc; }
-  #leaderPanel .fileStatus { font-size: 11px; opacity: 0.7; min-height: 14px; }
-  #leaderPanel button { width: 100%; margin-top: 4px; padding: 6px; border: none; border-radius: 4px; cursor: pointer; }
-  #recordToggleBtn { background: #444; color: #fff; }
+
+  /* ---- ESC menu ---- */
+  #menu { position: absolute; inset: 0; background: rgba(10,10,12,0.92); color: #eee; display: flex; flex-direction: column; z-index: 100; }
+  #menuTabs { display: flex; gap: 4px; padding: 12px 16px 0; border-bottom: 1px solid #333; }
+  .menuTabBtn { background: none; border: none; color: #999; padding: 10px 18px; font-size: 14px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .menuTabBtn.active { color: #fff; border-bottom-color: #5588ff; }
+  #menuPanels { flex: 1; overflow: auto; padding: 20px; max-width: 900px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+  .menuPanel.hidden { display: none; }
+  #menuCloseHint { position: absolute; top: 10px; right: 16px; color: #777; font-size: 12px; }
+
+  /* ---- teams tab ---- */
+  #teamsGrid { display: flex; gap: 16px; }
+  .teamBox { flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; min-height: 200px; }
+  .teamBox h3 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; }
+  .teamBox[data-team="red"] h3 { color: #ff6666; }
+  .teamBox[data-team="blue"] h3 { color: #6699ff; }
+  .teamBox[data-team="spectator"] h3 { color: #999; }
+  .playerRow { padding: 6px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); margin-bottom: 4px; font-size: 13px; }
+  .roomCodeLine { margin-top: 16px; font-size: 12px; color: #999; }
+  .roomCodeLine code { background: #222; padding: 2px 6px; border-radius: 4px; color: #ddd; }
+
+  /* ---- settings maker + record/files tabs ---- */
+  .makerRow { margin-bottom: 14px; }
+  .makerRow label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
+  .makerRow select, .makerRow input[type="text"] { width: 100%; padding: 6px; background: #1a1a1a; border: 1px solid #333; color: #eee; border-radius: 4px; box-sizing: border-box; }
+  .subTabBtn { background: #222; border: 1px solid #333; color: #aaa; padding: 4px 10px; margin: 0 4px 8px 0; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .subTabBtn.active { color: #fff; border-color: #5588ff; }
+  .settingRow { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 13px; gap: 10px; }
+  .settingRow input, .settingRow select { background: #1a1a1a; border: 1px solid #333; color: #eee; border-radius: 4px; padding: 3px 6px; width: 110px; }
+  .physicsCategoryTitle { font-size: 11px; text-transform: uppercase; color: #777; margin: 12px 0 4px; }
+  .settingsSlot { margin-bottom: 14px; }
+  .settingsSlot h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; opacity: 0.7; }
+  .fileStatus { font-size: 11px; opacity: 0.7; min-height: 14px; }
+  .menuBtn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #444; color: #fff; margin-right: 8px; margin-top: 6px; }
   #recordToggleBtn.recording { background: #cc3333; }
-  #recordSaveBtn { background: #333; color: #fff; }
 </style>
 <link rel="stylesheet" href="shared/texturePackPicker.css">
 </head>
@@ -34,26 +59,74 @@
   <div id="hudScore">Red 0 - 0 Blue</div>
   <div id="hudTimer">-:--</div>
 </div>
+<div id="hint">Esc for menu</div>
 <div id="joinPanel">
   <button id="joinRedBtn">Join Red</button>
   <button id="joinBlueBtn">Join Blue</button>
 </div>
-<div id="texturePackPicker"></div>
-<div id="leaderPanel">
-  <div class="settingsSlot">
-    <h4>Pregame Settings File</h4>
-    <label for="pregameSettingsFile">JSON: { physics?, match? }</label>
-    <input type="file" id="pregameSettingsFile" accept="application/json">
-    <div class="fileStatus" id="pregameSettingsStatus"></div>
+
+<div id="menu" class="hidden">
+  <div id="menuCloseHint">Esc to close</div>
+  <div id="menuTabs">
+    <button class="menuTabBtn active" data-tab="teamsPanel">Teams</button>
+    <button class="menuTabBtn" data-tab="texturesPanel">Textures</button>
+    <button class="menuTabBtn" data-tab="makerPanel">Settings Maker</button>
+    <button class="menuTabBtn" data-tab="recordPanel">Record &amp; Files</button>
   </div>
-  <div class="settingsSlot">
-    <h4>Game Settings File</h4>
-    <label for="gameSettingsFile">Applies the moment the match goes live</label>
-    <input type="file" id="gameSettingsFile" accept="application/json">
-    <div class="fileStatus" id="gameSettingsStatus"></div>
+  <div id="menuPanels">
+    <div id="teamsPanel" class="menuPanel">
+      <div id="teamsGrid">
+        <div class="teamBox" data-team="red"><h3>Red</h3><div class="teamList" id="redTeamList"></div></div>
+        <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
+        <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
+      </div>
+      <div class="roomCodeLine">Room: <code id="roomCodeText">connecting…</code> - replay saves here when the match ends.</div>
+    </div>
+
+    <div id="texturesPanel" class="menuPanel hidden">
+      <div id="texturePackPicker"></div>
+    </div>
+
+    <div id="makerPanel" class="menuPanel hidden">
+      <div class="makerRow">
+        <label for="makerMapSelect">Map</label>
+        <select id="makerMapSelect"></select>
+      </div>
+      <div class="makerRow">
+        <h4>Physics</h4>
+        <div id="makerPhysicsSubTabs"></div>
+        <div id="makerPhysicsRows"></div>
+      </div>
+      <div class="makerRow">
+        <h4>Match</h4>
+        <div id="makerMatchRows"></div>
+      </div>
+      <div class="makerRow">
+        <label for="makerFileName">Save as (name for the shareable link)</label>
+        <input type="text" id="makerFileName" placeholder="e.g. my-fun-mode">
+      </div>
+      <button class="menuBtn" id="makerDownloadBtn">Download File</button>
+      <button class="menuBtn" id="makerUploadBtn">Save to Server</button>
+      <div class="fileStatus" id="makerStatus"></div>
+    </div>
+
+    <div id="recordPanel" class="menuPanel hidden">
+      <div class="settingsSlot">
+        <h4>Pregame Settings File</h4>
+        <label for="pregameSettingsFile">JSON: { physics?, match? } - applies immediately</label>
+        <input type="file" id="pregameSettingsFile" accept="application/json">
+        <div class="fileStatus" id="pregameSettingsStatus"></div>
+      </div>
+      <div class="settingsSlot">
+        <h4>Game Settings File</h4>
+        <label for="gameSettingsFile">Applies the moment the match goes live</label>
+        <input type="file" id="gameSettingsFile" accept="application/json">
+        <div class="fileStatus" id="gameSettingsStatus"></div>
+      </div>
+      <button class="menuBtn" id="recordToggleBtn">Start Recording</button>
+      <button class="menuBtn" id="recordSaveBtn" disabled>Save Recording Now</button>
+    </div>
   </div>
-  <button id="recordToggleBtn">Start Recording</button>
-  <button id="recordSaveBtn" disabled>Save Recording Now</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.5.2/pixi.min.js"></script>
@@ -127,6 +200,7 @@
 <script src="client/app/stateWiring.js"></script>
 
 <script src="client/ui/hud.js"></script>
+<script src="client/ui/schemaForm.js"></script>
 <script src="client/ui/textureBrowser.js"></script>
 
 <script src="local/localTexturePrefs.js"></script>
@@ -134,7 +208,9 @@
 <script src="local/localReplayRecorder.js"></script>
 <script src="local/localTransport.js"></script>
 <script src="local/joinUI.js"></script>
+<script src="local/menu.js"></script>
 <script src="local/settingsFiles.js"></script>
+<script src="local/settingsMaker.js"></script>
 <script src="local/main.js"></script>
 </body>
 </html>

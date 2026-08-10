@@ -1,0 +1,3 @@
+{
+  "physics": { "bombRadius": 14, "bombStrength": 9, "rollingBombRadius": 10, "rollingBombStrength": 2.5, "bombCooldown": 8000 }
+}

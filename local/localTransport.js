@@ -36,6 +36,7 @@ var localTransport = (function () {
       .then(function (data) {
         roomCode = data.code || null;
         if (roomCode) console.log('[localTransport] room code: ' + roomCode + ' (replay will be at ' + WORKER_URL + '/replays/' + roomCode + ')');
+        appEvents.emit('roomCode:ready', roomCode);
         return roomCode;
       })
       .catch(function (err) {
@@ -246,6 +247,25 @@ var localTransport = (function () {
       });
   }
 
+  // Switches the live game to a different bundled map (assets/maps/<file>)
+  // - the Settings Maker's map picker uses this. Reuses the client's
+  // existing 'mapChanged' handler (client/game/app/packetApplier.js)
+  // unchanged: it already tears down every player sprite/body and rebuilds
+  // the renderer from a mapChanged-shaped packet, exactly what a real
+  // server-driven map change does. Players have to rejoin (Join Red/Blue)
+  // after switching, same as the real game.
+  function switchMap(mapFile) {
+    if (!gi) return Promise.reject(new Error('not booted yet'));
+    return fetch('./assets/maps/' + mapFile)
+      .then(function (res) { return res.json(); })
+      .then(function (mapDoc) {
+        gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });
+        gi.loadMap(mapDoc);
+        client.team = 'spectator';
+        packetRouter.dispatch(Object.assign({ type: 'mapChanged' }, mapDataFrom(gi.gameState)));
+      });
+  }
+
   // Manual recording control (confirmed requirement: pregame can be
   // recorded on demand, not only automatically at match start). Starting
   // by hand during pregame needs a mapData snapshot too, since it may run
@@ -283,5 +303,7 @@ var localTransport = (function () {
     getRoomCode: function () { return roomCode; },
     gameInstance: function () { return gi; },
     matchState: function () { return gi ? gi.gameState.state : null; },
+    switchMap: switchMap,
+    workerUrl: WORKER_URL,
   };
 })();

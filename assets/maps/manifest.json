@@ -1,0 +1,30 @@
+[
+  {
+    "file": "butterflycatcher.json",
+    "name": "Butterfly Catcher",
+    "author": "Xx360NoSwagx",
+    "width": 43,
+    "height": 24
+  },
+  {
+    "file": "default.json",
+    "name": "Alpine",
+    "author": "Canvas",
+    "width": 51,
+    "height": 33
+  },
+  {
+    "file": "moai2.json",
+    "name": "Moai 2",
+    "author": "MarcusYallow & MC Ride",
+    "width": 37,
+    "height": 29
+  },
+  {
+    "file": "wallaby.json",
+    "name": "Wallaby",
+    "author": "meowza",
+    "width": 37,
+    "height": 23
+  }
+]

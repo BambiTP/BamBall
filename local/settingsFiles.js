@@ -11,10 +11,7 @@
 // a real leader role exists, this panel is what gates behind it.
 
 function initSettingsFilesUI() {
-  var panel = document.getElementById('leaderPanel');
-  if (!panel) return;
-
-  var pregameSettings = null; // parsed { physics?, match? }, applied immediately + on every re-entry to pregame
+  var pregameSettings = null; // parsed { mapFile?, physics?, match? }, applied immediately + on every re-entry to pregame
   var gameSettings     = null; // applied the moment the match goes live
 
   function readJsonFile(fileInput) {
@@ -29,11 +26,13 @@ function initSettingsFilesUI() {
   // silently applying half of itself.
   function applySettings(parsed) {
     if (!localTransport.gameInstance()) return;
-    var gi = localTransport.gameInstance();
-    if (parsed.physics) gi.matchManager.updatePhysics(parsed.physics);
-    if (parsed.match)   gi.matchManager.updateSettings(parsed.match);
-    // mapId switching needs a map library (only the one bundled default
-    // map exists today) - tracked separately, not applied here yet.
+    var apply = function () {
+      var gi = localTransport.gameInstance();
+      if (parsed.physics) gi.matchManager.updatePhysics(parsed.physics);
+      if (parsed.match)   gi.matchManager.updateSettings(parsed.match);
+    };
+    if (parsed.mapFile) localTransport.switchMap(parsed.mapFile).then(apply);
+    else apply();
   }
 
   function wireFileSlot(inputId, statusId, onLoaded) {

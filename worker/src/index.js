@@ -9,10 +9,14 @@
 //   POST /api/rooms                 -> { code } - mints a fresh, unique room code
 //   PUT  /api/replays/:code         -> stores a finished match's replay in R2, forever
 //   GET  /replays/:code             -> serves it back, byte for byte
+//   PUT  /api/settings/:name        -> stores a settings-maker file (overwritable - unlike
+//                                       replays, a named preset is meant to be iterated on)
+//   GET  /settings/:name            -> serves it back
 
-const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I - avoids look-alikes when read aloud or typed by hand
-const ROOM_CODE_LENGTH   = 6;
-const REPLAY_KEY_PREFIX  = 'replays/';
+const ROOM_CODE_ALPHABET  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I - avoids look-alikes when read aloud or typed by hand
+const ROOM_CODE_LENGTH    = 6;
+const REPLAY_KEY_PREFIX   = 'replays/';
+const SETTINGS_KEY_PREFIX = 'settings/';
 
 function corsHeaders() {
   return {
@@ -40,6 +44,37 @@ function randomRoomCode() {
 
 function isValidRoomCode(code) {
   return typeof code === 'string' && /^[A-Z0-9]{4,12}$/.test(code);
+}
+
+// Settings-file names are user-chosen (e.g. "fun-superspeed"), not
+// server-minted like room codes - constrained to a safe slug shape since
+// it goes straight into an R2 key and a URL path.
+function isValidSettingsName(name) {
+  return typeof name === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(name);
+}
+
+async function handleUploadSettings(request, env, name) {
+  if (!isValidSettingsName(name)) return json({ error: 'invalid name - use letters, numbers, - and _ only' }, 400);
+
+  var body = await request.text();
+  try { JSON.parse(body); } catch (e) { return json({ error: 'body must be valid JSON' }, 400); }
+
+  await env.REPLAYS.put(SETTINGS_KEY_PREFIX + name + '.json', body, {
+    httpMetadata: { contentType: 'application/json' },
+  });
+  return json({ ok: true, name: name, url: '/settings/' + name });
+}
+
+async function handleGetSettings(env, name) {
+  if (!isValidSettingsName(name)) return json({ error: 'invalid name' }, 400);
+
+  var object = await env.REPLAYS.get(SETTINGS_KEY_PREFIX + name + '.json');
+  if (!object) return json({ error: 'not found' }, 404);
+
+  var headers = new Headers(corsHeaders());
+  headers.set('Content-Type', 'application/json');
+  headers.set('Cache-Control', 'public, max-age=60'); // short cache - unlike replays, these are meant to be overwritten
+  return new Response(object.body, { headers: headers });
 }
 
 async function handleCreateRoom(env) {
@@ -124,6 +159,16 @@ export default {
     var replayFetch = url.pathname.match(/^\/replays\/([A-Za-z0-9]+)$/);
     if (request.method === 'GET' && replayFetch) {
       return handleGetReplay(env, replayFetch[1].toUpperCase());
+    }
+
+    var settingsUpload = url.pathname.match(/^\/api\/settings\/([A-Za-z0-9_-]+)$/);
+    if (request.method === 'PUT' && settingsUpload) {
+      return handleUploadSettings(request, env, settingsUpload[1]);
+    }
+
+    var settingsFetch = url.pathname.match(/^\/settings\/([A-Za-z0-9_-]+)$/);
+    if (request.method === 'GET' && settingsFetch) {
+      return handleGetSettings(env, settingsFetch[1]);
     }
 
     return json({ error: 'not found' }, 404);
