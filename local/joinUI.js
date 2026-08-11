@@ -1,7 +1,6 @@
-// joinUI.js - the whole UI beyond the viewport/HUD: two buttons. Reuses
-// client/game/app/actions.js unchanged (same joinTeam/joinGame calls a
-// real menu.js team-box click would make) - localTransport.js's `socket`
-// shim is what makes that work with no server.
+// joinUI.js - Join Red Team / Join Blue Team / Join Game / Leave Game /
+// Leave Group. Reuses client/game/app/actions.js unchanged - localTransport.js's
+// `socket` shim is what makes that work with no server.
 
 // fireInput.js's ball-click-to-open-settings path is leader-only - this
 // build has no leader role or settings panel to open, so it's always off.
@@ -13,44 +12,61 @@ var joinUIReady = false;
 
 // Not clickable until main.js's full boot chain (map, textures, manifest)
 // has actually finished - drawPlayer() (client/game/render/playerRenderer.js)
-// silently no-ops if this.sprites isn't populated yet
-// (`if (!tex) return;`), and nothing ever retries it once textures do
-// arrive, so joining too early left the ball permanently invisible with
-// no error at all. Real bug, found from a live report - not hypothetical.
+// silently no-ops if this.sprites isn't populated yet, and nothing ever
+// retries it once textures do arrive, so joining too early left the ball
+// permanently invisible with no error at all. Real bug, found from a live
+// report - not hypothetical.
 function enableJoinUI() {
   joinUIReady = true;
-  var redBtn  = document.getElementById('joinRedBtn');
-  var blueBtn = document.getElementById('joinBlueBtn');
-  redBtn.disabled  = false;
-  blueBtn.disabled = false;
+  refreshJoinUI();
+}
+
+function refreshJoinUI() {
+  var redBtn   = document.getElementById('joinRedBtn');
+  var blueBtn  = document.getElementById('joinBlueBtn');
+  var gameBtn  = document.getElementById('joinGameBtn');
+  var leaveBtn = document.getElementById('leaveGameBtn');
+
+  var team    = game.myTeam || null; // set by team:changed below
+  var inGame  = game.myId !== null;
+
+  redBtn.disabled   = !joinUIReady;
+  blueBtn.disabled  = !joinUIReady;
+  gameBtn.disabled  = !joinUIReady || inGame || (team !== 'red' && team !== 'blue');
+  leaveBtn.disabled = !joinUIReady || !inGame;
+
+  redBtn.classList.toggle('active', team === 'red');
+  blueBtn.classList.toggle('active', team === 'blue');
 }
 
 function initJoinUI() {
-  var redBtn  = document.getElementById('joinRedBtn');
-  var blueBtn = document.getElementById('joinBlueBtn');
-  redBtn.disabled  = true;
-  blueBtn.disabled = true;
-
-  function join(team) {
+  document.getElementById('joinRedBtn').addEventListener('click', function () {
     if (!joinUIReady) return;
-    redBtn.disabled  = true;
-    blueBtn.disabled = true;
-    redBtn.classList.add('hidden');
-    blueBtn.classList.add('hidden');
-    actions.joinTeam(team);
-    actions.joinGame();
-  }
-
-  redBtn.addEventListener('click', function () { join('red'); });
-  blueBtn.addEventListener('click', function () { join('blue'); });
-
-  appEvents.on('error', function (message) {
-    // join_game can fail (already in, bad team) - re-show the buttons
-    // rather than leaving the player stuck with no way to retry.
-    redBtn.disabled  = false;
-    blueBtn.disabled = false;
-    redBtn.classList.remove('hidden');
-    blueBtn.classList.remove('hidden');
-    console.error('[joinUI]', message);
+    actions.joinTeam('red');
   });
+  document.getElementById('joinBlueBtn').addEventListener('click', function () {
+    if (!joinUIReady) return;
+    actions.joinTeam('blue');
+  });
+  document.getElementById('joinGameBtn').addEventListener('click', function () {
+    if (!joinUIReady) return;
+    actions.joinGame();
+  });
+  document.getElementById('leaveGameBtn').addEventListener('click', function () {
+    if (!joinUIReady) return;
+    actions.leaveGame();
+  });
+  document.getElementById('leaveGroupBtn').addEventListener('click', function () {
+    // No real "group"/lobby to return to in this solo/local build (that's
+    // a P2P-era concept) - closest honest equivalent is starting fresh.
+    socket.closeByUser();
+    location.reload();
+  });
+
+  game.myTeam = null;
+  appEvents.on('team:changed', function (team) { game.myTeam = team; refreshJoinUI(); });
+  appEvents.on('spectating:changed', refreshJoinUI);
+  appEvents.on('error', function (message) { console.error('[joinUI]', message); refreshJoinUI(); });
+
+  refreshJoinUI();
 }
