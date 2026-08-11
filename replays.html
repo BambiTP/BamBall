@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BambiPro Replays</title>
+<style>
+  html, body { margin: 0; padding: 0; min-height: 100%; background: #111; color: #eee; font-family: sans-serif; }
+  body { padding: 24px; box-sizing: border-box; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #999; font-size: 13px; margin-bottom: 24px; }
+  .sub a { color: #7aa2ff; }
+  #status { color: #999; font-size: 13px; margin-bottom: 12px; min-height: 16px; }
+  table { width: 100%; max-width: 900px; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; }
+  th { color: #999; font-weight: normal; font-size: 12px; text-transform: uppercase; }
+  tr:hover td { background: rgba(255,255,255,0.03); }
+  code { background: #1a1a1a; padding: 2px 6px; border-radius: 4px; }
+  .score { font-variant-numeric: tabular-nums; }
+  .red { color: #ff8080; }
+  .blue { color: #80a0ff; }
+  a.dl { color: #7aa2ff; text-decoration: none; font-size: 13px; }
+  a.dl:hover { text-decoration: underline; }
+  #loadMoreBtn { margin-top: 16px; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #333; color: #eee; }
+  #loadMoreBtn:disabled { opacity: 0.4; cursor: default; }
+  #loadMoreBtn.hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Replays</h1>
+<div class="sub">Every match ever played gets a room code and a permanent replay - <a href="index.html">back to the game</a>.</div>
+<div id="status">Loading…</div>
+<table id="replayTable" style="display:none">
+  <thead>
+    <tr><th>Room</th><th>Map</th><th>Score</th><th>Winner</th><th>Date</th><th></th></tr>
+  </thead>
+  <tbody id="replayRows"></tbody>
+</table>
+<button id="loadMoreBtn" class="hidden">Load more</button>
+
+<script>
+// Standalone page - deliberately doesn't share any script with index.html
+// (no engine, no renderer, nothing game-related needed to just list rows),
+// so WORKER_URL is duplicated here rather than imported. Keep in sync with
+// local/localTransport.js's WORKER_URL if that ever changes.
+var WORKER_URL = 'https://api.bambipro.workers.dev';
+
+var statusEl = document.getElementById('status');
+var table    = document.getElementById('replayTable');
+var rows     = document.getElementById('replayRows');
+var loadMoreBtn = document.getElementById('loadMoreBtn');
+var nextCursor  = null;
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  var d = new Date(iso);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function scoreCell(item) {
+  if (!item.scores) return '—';
+  var red  = item.scores.red  !== undefined ? item.scores.red  : '?';
+  var blue = item.scores.blue !== undefined ? item.scores.blue : '?';
+  return '<span class="score"><span class="red">' + red + '</span> - <span class="blue">' + blue + '</span></span>';
+}
+
+function winnerCell(item) {
+  if (!item.winner) return '—';
+  if (item.winner === 'red')  return '<span class="red">Red</span>';
+  if (item.winner === 'blue') return '<span class="blue">Blue</span>';
+  return item.winner; // e.g. 'tie'
+}
+
+function addRow(item) {
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><code>' + item.code + '</code></td>' +
+    '<td>' + (item.mapName || 'Unknown map') + '</td>' +
+    '<td>' + scoreCell(item) + '</td>' +
+    '<td>' + winnerCell(item) + '</td>' +
+    '<td>' + formatDate(item.uploadedAt) + '</td>' +
+    '<td><a class="dl" href="' + WORKER_URL + '/replays/' + item.code + '" download>Download</a></td>';
+  rows.appendChild(tr);
+}
+
+function loadPage(cursor) {
+  loadMoreBtn.disabled = true;
+  var url = WORKER_URL + '/api/replays' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : '');
+  return fetch(url).then(function (res) {
+    if (!res.ok) throw new Error('status ' + res.status);
+    return res.json();
+  }).then(function (data) {
+    var replays = data.replays || [];
+    replays.forEach(addRow);
+    nextCursor = data.cursor || null;
+
+    table.style.display = replays.length || rows.children.length ? '' : 'none';
+    statusEl.textContent = rows.children.length ? '' : 'No replays yet - play a match to create the first one.';
+    loadMoreBtn.classList.toggle('hidden', !nextCursor);
+    loadMoreBtn.disabled = false;
+  }).catch(function (err) {
+    statusEl.textContent = 'Failed to load replays: ' + err.message;
+  });
+}
+
+loadMoreBtn.addEventListener('click', function () { loadPage(nextCursor); });
+loadPage(null);
+</script>
+</body>
+</html>

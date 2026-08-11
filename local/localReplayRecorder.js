@@ -137,10 +137,16 @@ function downloadBlob(blob, filename) {
 // Worker whether to hand it back as opaque gzip bytes or plain text - see
 // worker/src/index.js's header comment for why this isn't a normal
 // Content-Encoding.
-function uploadReplay(workerUrl, roomCode, blob, gzip) {
+// meta (optional): { mapName, mapId, winner, reason, scores } - stored as
+// R2 customMetadata (worker/src/index.js handleUploadReplay) so a replay
+// browsing page can list something more useful than a bare room code
+// without downloading and decompressing every replay just to show a list.
+function uploadReplay(workerUrl, roomCode, blob, gzip, meta) {
+  var headers = { 'X-Replay-Gzip': gzip ? '1' : '0' };
+  if (meta) headers['X-Replay-Meta'] = JSON.stringify(meta);
   return fetch(workerUrl + '/api/replays/' + roomCode, {
     method: 'PUT',
-    headers: { 'X-Replay-Gzip': gzip ? '1' : '0' },
+    headers: headers,
     body: blob,
   }).then(function (res) {
     if (!res.ok) throw new Error('replay upload failed: ' + res.status);

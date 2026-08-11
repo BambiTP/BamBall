@@ -49,9 +49,9 @@ var localTransport = (function () {
   // session got a room code at all. Failures are logged, not thrown - a
   // player's local download (matchEnd handler below) is never blocked on
   // the network round-trip to the Worker succeeding.
-  function persistRecording(result) {
+  function persistRecording(result, meta) {
     if (!roomCode) return Promise.resolve(null);
-    return uploadReplay(WORKER_URL, roomCode, result.blob, result.gzip)
+    return uploadReplay(WORKER_URL, roomCode, result.blob, result.gzip, meta)
       .then(function (data) {
         console.log('[localTransport] replay saved at ' + WORKER_URL + data.url);
         return data;
@@ -119,9 +119,16 @@ var localTransport = (function () {
 
     gi.emitter.on('matchEnd', function (data) {
       if (!recorder.isRecording()) return;
+      var meta = {
+        mapName: gi.gameState.mapName,
+        mapId:   gi.gameState.mapId,
+        winner:  data.winner,
+        reason:  data.reason,
+        scores:  data.scores,
+      };
       recorder.finish(data).then(function (result) {
         downloadBlob(result.blob, result.filename);
-        persistRecording(result);
+        persistRecording(result, meta);
       });
     });
 
