@@ -47,8 +47,12 @@ function start() {
     renderer.start();
     startPhysicsLoop();
     enableJoinUI();
+    var overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.classList.add('hidden');
   }).catch(function (err) {
     console.error('[main] boot failed:', err);
+    var overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.textContent = 'Failed to load - check the console (F12) for details.';
   });
 }
 

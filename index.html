@@ -23,6 +23,14 @@
   #leaveGroupBtn { background: #333; font-size: 13px; padding: 6px 14px; }
   .hidden { display: none !important; }
 
+  /* ---- loading overlay: plain HTML/CSS, no JS needed to show it - it's
+     visible the instant the browser parses this far, before any of the
+     72 deferred <script> tags below have even started fetching. Hidden by
+     main.js once boot() actually finishes (map, physics, textures ready). */
+  #loadingOverlay { position: absolute; inset: 0; background: #111; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: #ccc; font-size: 14px; }
+  #loadingSpinner { width: 36px; height: 36px; border: 3px solid #333; border-top-color: #5588ff; border-radius: 50%; animation: loadingSpin 0.8s linear infinite; }
+  @keyframes loadingSpin { to { transform: rotate(360deg); } }
+
   /* ---- ESC menu ---- */
   #menu { position: absolute; inset: 0; background: rgba(10,10,12,0.92); color: #eee; display: flex; flex-direction: column; z-index: 100; }
   #menuTabs { display: flex; gap: 4px; padding: 12px 16px 0; border-bottom: 1px solid #333; }
@@ -60,6 +68,7 @@
 <link rel="stylesheet" href="shared/texturePackPicker.css">
 </head>
 <body>
+<div id="loadingOverlay"><div id="loadingSpinner"></div><div>Loading BamBall…</div></div>
 <div id="viewport"></div>
 <div id="hud">
   <div id="hudScore">Red 0 - 0 Blue</div>
@@ -140,88 +149,88 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.5.2/pixi.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.5.2/pixi.min.js" defer></script>
 
-<script src="shared/Box2dWeb-2.1.a.3.js"></script>
-<script src="shared/forceFields.js"></script>
-<script src="shared/movement.js"></script>
-<script src="shared/overlayCoords.js"></script>
-<script src="shared/replayFormat.js"></script>
+<script src="shared/Box2dWeb-2.1.a.3.js" defer></script>
+<script src="shared/forceFields.js" defer></script>
+<script src="shared/movement.js" defer></script>
+<script src="shared/overlayCoords.js" defer></script>
+<script src="shared/replayFormat.js" defer></script>
 
-<script src="engine/eventBus.js"></script>
-<script src="engine/coords.js"></script>
-<script src="engine/gameConfig.js"></script>
-<script src="engine/settingsResolver.js"></script>
-<script src="engine/tiles/powerupTypes.js"></script>
-<script src="engine/tiles/physicsData.js"></script>
-<script src="engine/settingsSchema.js"></script>
-<script src="engine/matchSettings.js"></script>
-<script src="engine/gameState.js"></script>
-<script src="engine/physicsWorld.js"></script>
-<script src="engine/snapshotFactory.js"></script>
-<script src="engine/playerLifecycle.js"></script>
-<script src="engine/flagLogic.js"></script>
-<script src="engine/teamTiles.js"></script>
-<script src="engine/gateLogic.js"></script>
-<script src="engine/powerupSpawner.js"></script>
-<script src="engine/gameHelpers.js"></script>
-<script src="engine/physicsHelpers.js"></script>
-<script src="engine/mapWiring.js"></script>
-<script src="engine/tiles/customTileActions.js"></script>
-<script src="engine/tiles/mapFormat.js"></script>
-<script src="engine/tiles/tileHandlers.js"></script>
-<script src="engine/tiles/tileLogic.js"></script>
-<script src="engine/matchManager.js"></script>
-<script src="engine/gameInstance.js"></script>
-<script src="engine/packetBuilders.js"></script>
+<script src="engine/eventBus.js" defer></script>
+<script src="engine/coords.js" defer></script>
+<script src="engine/gameConfig.js" defer></script>
+<script src="engine/settingsResolver.js" defer></script>
+<script src="engine/tiles/powerupTypes.js" defer></script>
+<script src="engine/tiles/physicsData.js" defer></script>
+<script src="engine/settingsSchema.js" defer></script>
+<script src="engine/matchSettings.js" defer></script>
+<script src="engine/gameState.js" defer></script>
+<script src="engine/physicsWorld.js" defer></script>
+<script src="engine/snapshotFactory.js" defer></script>
+<script src="engine/playerLifecycle.js" defer></script>
+<script src="engine/flagLogic.js" defer></script>
+<script src="engine/teamTiles.js" defer></script>
+<script src="engine/gateLogic.js" defer></script>
+<script src="engine/powerupSpawner.js" defer></script>
+<script src="engine/gameHelpers.js" defer></script>
+<script src="engine/physicsHelpers.js" defer></script>
+<script src="engine/mapWiring.js" defer></script>
+<script src="engine/tiles/customTileActions.js" defer></script>
+<script src="engine/tiles/mapFormat.js" defer></script>
+<script src="engine/tiles/tileHandlers.js" defer></script>
+<script src="engine/tiles/tileLogic.js" defer></script>
+<script src="engine/matchManager.js" defer></script>
+<script src="engine/gameInstance.js" defer></script>
+<script src="engine/packetBuilders.js" defer></script>
 
-<script src="client/renderData.js"></script>
-<script src="client/quadrantCoords.js"></script>
-<script src="client/particles.js"></script>
+<script src="client/renderData.js" defer></script>
+<script src="client/quadrantCoords.js" defer></script>
+<script src="client/particles.js" defer></script>
 
-<script src="client/state/engineClock.js"></script>
-<script src="client/state/gameState.js"></script>
-<script src="client/state/settingsState.js"></script>
-<script src="client/state/tileCatalog.js"></script>
-<script src="client/state/localSettings.js"></script>
+<script src="client/state/engineClock.js" defer></script>
+<script src="client/state/gameState.js" defer></script>
+<script src="client/state/settingsState.js" defer></script>
+<script src="client/state/tileCatalog.js" defer></script>
+<script src="client/state/localSettings.js" defer></script>
 
-<script src="client/net/packetSchema.js"></script>
-<script src="client/net/packetRouter.js"></script>
+<script src="client/net/packetSchema.js" defer></script>
+<script src="client/net/packetRouter.js" defer></script>
 
-<script src="client/physicsWorld.js"></script>
-<script src="client/entityReconciler.js"></script>
-<script src="client/movement.js"></script>
-<script src="client/loop.js"></script>
+<script src="client/physicsWorld.js" defer></script>
+<script src="client/entityReconciler.js" defer></script>
+<script src="client/movement.js" defer></script>
+<script src="client/loop.js" defer></script>
 
-<script src="client/render/renderer.js"></script>
-<script src="client/render/spriteAtlas.js"></script>
-<script src="client/render/wallAutotile.js"></script>
-<script src="client/render/playerRenderer.js"></script>
-<script src="client/render/overlayRenderer.js"></script>
-<script src="client/render/camera.js"></script>
+<script src="client/render/renderer.js" defer></script>
+<script src="client/render/spriteAtlas.js" defer></script>
+<script src="client/render/wallAutotile.js" defer></script>
+<script src="client/render/playerRenderer.js" defer></script>
+<script src="client/render/overlayRenderer.js" defer></script>
+<script src="client/render/camera.js" defer></script>
 
-<script src="client/input/keyboard.js"></script>
-<script src="client/input/cameraControls.js"></script>
-<script src="client/input/fireInput.js"></script>
+<script src="client/input/keyboard.js" defer></script>
+<script src="client/input/cameraControls.js" defer></script>
+<script src="client/input/fireInput.js" defer></script>
 
-<script src="client/app/appEvents.js"></script>
-<script src="client/app/actions.js"></script>
-<script src="client/app/spriteSheetLoader.js"></script>
-<script src="client/app/packetApplier.js"></script>
-<script src="client/app/stateWiring.js"></script>
+<script src="client/app/appEvents.js" defer></script>
+<script src="client/app/actions.js" defer></script>
+<script src="client/app/spriteSheetLoader.js" defer></script>
+<script src="client/app/packetApplier.js" defer></script>
+<script src="client/app/stateWiring.js" defer></script>
 
-<script src="client/ui/hud.js"></script>
-<script src="client/ui/schemaForm.js"></script>
-<script src="client/ui/textureBrowser.js"></script>
+<script src="client/ui/hud.js" defer></script>
+<script src="client/ui/schemaForm.js" defer></script>
+<script src="client/ui/textureBrowser.js" defer></script>
 
-<script src="local/localTexturePrefs.js"></script>
-<script src="shared/texturePackPicker.js"></script>
-<script src="local/localReplayRecorder.js"></script>
-<script src="local/localTransport.js"></script>
-<script src="local/joinUI.js"></script>
-<script src="local/menu.js"></script>
-<script src="local/settingsFiles.js"></script>
-<script src="local/settingsMaker.js"></script>
-<script src="local/main.js"></script>
+<script src="local/localTexturePrefs.js" defer></script>
+<script src="shared/texturePackPicker.js" defer></script>
+<script src="local/localReplayRecorder.js" defer></script>
+<script src="local/localTransport.js" defer></script>
+<script src="local/joinUI.js" defer></script>
+<script src="local/menu.js" defer></script>
+<script src="local/settingsFiles.js" defer></script>
+<script src="local/settingsMaker.js" defer></script>
+<script src="local/main.js" defer></script>
 </body>
 </html>
