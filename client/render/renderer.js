@@ -41,7 +41,15 @@ class Renderer {
   }
 
   async init() {
-    await this.app.init({ resizeTo: this.canvas, backgroundAlpha: 0, antialias: true });
+    // antialias:false - MSAA buys nothing for flat, axis-aligned pixel tiles,
+    // but it's real GPU cost every frame. On a software-rendered or weak/
+    // integrated GPU (common without full hardware acceleration, e.g. some
+    // Linux setups) that cost can be severe enough to peg a whole CPU core
+    // and stall the OS, not just the tab - reported as the page load
+    // "freezing the whole computer." powerPreference:'low-power' additionally
+    // steers dual-GPU laptops away from spinning up the discrete GPU just to
+    // draw flat sprites.
+    await this.app.init({ resizeTo: this.canvas, backgroundAlpha: 0, antialias: false, powerPreference: 'low-power' });
     this.canvas.appendChild(this.app.canvas);
     this.app.stage.addChild(this.world);
 
