@@ -274,23 +274,25 @@ var localTransport = (function () {
     wireEngineEvents();
 
     // The authoritative (engine) physics world: one Box2D body per wall
-    // tile on the whole map (~1200+ for the default map) - the single
-    // heaviest step in boot. Chunked (engine/gameInstance.js
-    // createMapChunked/loadMapChunked): 40 tiles per real animation frame,
-    // so no single frame ever does more than a small, bounded slice of
-    // Box2D work, on any machine - trading a bit of total load time
-    // (a couple hundred ms of extra frames) for a guarantee the tab never
-    // goes unresponsive building it, rather than trying to make the work
-    // itself faster.
-    await gi.loadMapChunked(mapDoc, null, 40);
+    // tile on the whole map (~1200+ for the default map). Tried chunking
+    // this across frames (40 tiles/frame) to guarantee no single frame
+    // could ever block - measured cost: ~35 extra frame-waits, ~500-600ms
+    // of pure waiting on top of the ~200-300ms the work itself takes,
+    // nearly tripling load time. Reverted: the defer'd scripts, the
+    // loading overlay, and antialias:false (client/render/renderer.js)
+    // already fixed the actual reported freeze - that was GPU/driver cost
+    // from forced MSAA on a live tab that otherwise loaded clean and fast
+    // (confirmed directly: <20MB heap, no errors). Straightforward
+    // synchronous build is faster and was never the real problem.
+    gi.loadMap(mapDoc);
 
     // The separate client-side prediction physics world (client/
     // physicsWorld.js, built inside applyJoined below) - same map, its own
     // Box2D bodies, needed so the local player's own movement predicts
-    // correctly. Also chunked, same reasoning.
+    // correctly.
     var room = { instance: gi, kind: 'game', leaderId: localId };
     var joinedPacket = packetBuilders.joined(room, client, account, mapDataFrom(gi.gameState));
-    await packetApplier.applyJoined(joinedPacket);
+    packetApplier.applyJoined(joinedPacket);
 
     gi.start();
     return gi;

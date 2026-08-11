@@ -147,42 +147,6 @@ class PhysicsWorld {
     }
   }
 
-  // Same result as buildWalls + buildSpikes together, but yields every
-  // batchSize tiles instead of building every wall/spike Box2D body in one
-  // synchronous block - see engine/gameInstance.js's createMapChunked for
-  // the identical reasoning. Boot-only: live wall edits (scheduleWallRedraw
-  // in app/packetApplier.js) stay on the plain synchronous buildWalls/
-  // buildSpikes, since those are small incremental redraws, not a full map.
-  buildWallsAndSpikesChunked(wallMap, map, batchSize) {
-    var self = this;
-    this.clearWalls();
-
-    function yieldFrame() {
-      if (typeof requestAnimationFrame === 'function') {
-        return new Promise(function (resolve) { requestAnimationFrame(function () { resolve(); }); });
-      }
-      return new Promise(function (resolve) { setTimeout(resolve, 0); });
-    }
-
-    async function run() {
-      var count = 0;
-      for (var y = 0; y < wallMap.length; y++) {
-        for (var x = 0; x < wallMap[y].length; x++) {
-          var id = wallMap[y][x];
-          if (id) {
-            var body = self.makeWallBody(id, x, y);
-            if (body) self.wallBodies.push({ body: body, x: x, y: y });
-          }
-          count++;
-          if (count % batchSize === 0) await yieldFrame();
-        }
-      }
-      self._buildSpikesInto(map);
-    }
-
-    return run();
-  }
-
   clearWalls() {
     for (var i = 0; i < this.wallBodies.length; i++) {
       this.world.DestroyBody(this.wallBodies[i].body);
