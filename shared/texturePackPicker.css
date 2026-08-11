@@ -192,7 +192,12 @@
 .tppModalBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  /* Above #menu's z-index:100 (local/index.html) - this modal (and its
+     sibling changeAllConfirm modal, same class) always opens ON TOP of
+     the Esc menu that hosts the picker, not behind it. Was 50, which put
+     it visibly behind the menu - clicking a tile "did nothing" because
+     the modal WAS opening, just invisibly. */
+  z-index: 200;
   background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;

@@ -46,6 +46,7 @@ function start() {
   }).then(function () {
     renderer.start();
     startPhysicsLoop();
+    enableJoinUI();
   }).catch(function (err) {
     console.error('[main] boot failed:', err);
   });

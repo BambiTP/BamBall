@@ -12,17 +12,27 @@
 //   PUT  /api/settings/:name        -> stores a settings-maker file (overwritable - unlike
 //                                       replays, a named preset is meant to be iterated on)
 //   GET  /settings/:name            -> serves it back
+//   GET  /api/fortunatemaps/:id/png  -> proxies fortunatemaps.herokuapp.com's map PNG
+//   GET  /api/fortunatemaps/:id/json -> proxies its JSON sidecar (wiring/spawn data)
+//     Browsers can't fetch() a third-party site directly unless THAT site
+//     opts in with its own CORS headers, which isn't ours to add - a
+//     Worker fetch has no such restriction (CORS is a browser-only rule),
+//     so this just relays the bytes with our own CORS headers attached.
 
 const ROOM_CODE_ALPHABET  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I - avoids look-alikes when read aloud or typed by hand
+// 32^6 = ~1.07 billion possible codes - plenty for a hobby project, even
+// though codes are permanent keys that never get reused (replays are
+// kept forever). Confirmed fine as-is after checking the actual math.
 const ROOM_CODE_LENGTH    = 6;
 const REPLAY_KEY_PREFIX   = 'replays/';
 const SETTINGS_KEY_PREFIX = 'settings/';
+const FORTUNATE_BASE      = 'https://fortunatemaps.herokuapp.com';
 
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Content-Encoding',
+    'Access-Control-Allow-Headers': 'Content-Type, Content-Encoding, X-Replay-Gzip',
   };
 }
 
@@ -116,13 +126,43 @@ async function handleUploadReplay(request, env, code) {
   var already = await env.REPLAYS.head(key);
   if (already) return json({ error: 'replay already stored for this room' }, 409);
 
+  // Small, sortable summary for the future public replay-browsing page
+  // (mapName/scores/finishedAt at minimum) - R2 customMetadata values must
+  // be strings, so it travels as one JSON blob under a single key rather
+  // than one field each. R2's own list() (see handleListReplays) is enough
+  // to browse/sort by this at the current scale; a real database (D1) is
+  // the upgrade path if the replay count ever gets large enough that
+  // listing+client-side sorting stops being fast enough.
+  var metaHeader = request.headers.get('X-Replay-Meta');
+  var meta = {};
+  if (metaHeader) { try { meta = JSON.parse(metaHeader); } catch (e) {} }
+
   await env.REPLAYS.put(key, body, {
     httpMetadata: {
       contentType: isGzip ? 'application/gzip' : 'application/x-ndjson',
     },
+    customMetadata: { summary: JSON.stringify(meta) },
   });
 
   return json({ ok: true, code: code, url: '/replays/' + code });
+}
+
+// Every stored replay's code + summary metadata, newest first - the data
+// source for the future public browsing/sorting page. Paginated via R2's
+// own cursor (list() caps at 1000 per call) rather than trying to fetch
+// everything at once as the bucket grows.
+async function handleListReplays(env, cursor) {
+  var page = await env.REPLAYS.list({ prefix: REPLAY_KEY_PREFIX, cursor: cursor || undefined, limit: 100 });
+  var items = page.objects.map(function (obj) {
+    var code = obj.key.slice(REPLAY_KEY_PREFIX.length).replace(/\.ndjson(\.gz)?$/, '');
+    var summary = {};
+    if (obj.customMetadata && obj.customMetadata.summary) {
+      try { summary = JSON.parse(obj.customMetadata.summary); } catch (e) {}
+    }
+    return Object.assign({ code: code, uploadedAt: obj.uploaded }, summary);
+  });
+  items.sort(function (a, b) { return new Date(b.uploadedAt) - new Date(a.uploadedAt); });
+  return json({ replays: items, cursor: page.truncated ? page.cursor : null });
 }
 
 async function handleGetReplay(env, code) {

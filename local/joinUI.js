@@ -9,11 +9,30 @@ function isLeader() {
   return false;
 }
 
+var joinUIReady = false;
+
+// Not clickable until main.js's full boot chain (map, textures, manifest)
+// has actually finished - drawPlayer() (client/game/render/playerRenderer.js)
+// silently no-ops if this.sprites isn't populated yet
+// (`if (!tex) return;`), and nothing ever retries it once textures do
+// arrive, so joining too early left the ball permanently invisible with
+// no error at all. Real bug, found from a live report - not hypothetical.
+function enableJoinUI() {
+  joinUIReady = true;
+  var redBtn  = document.getElementById('joinRedBtn');
+  var blueBtn = document.getElementById('joinBlueBtn');
+  redBtn.disabled  = false;
+  blueBtn.disabled = false;
+}
+
 function initJoinUI() {
   var redBtn  = document.getElementById('joinRedBtn');
   var blueBtn = document.getElementById('joinBlueBtn');
+  redBtn.disabled  = true;
+  blueBtn.disabled = true;
 
   function join(team) {
+    if (!joinUIReady) return;
     redBtn.disabled  = true;
     blueBtn.disabled = true;
     redBtn.classList.add('hidden');

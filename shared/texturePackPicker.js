@@ -247,6 +247,13 @@ function mountTexturePackPicker(container, opts) {
     body.appendChild(preview);
     wrap.appendChild(body);
 
+    // No contact-sheet compositor in this static build (server/assets/
+    // contactSheetBuilder.js is Node/Jimp-only) - the full pack preview is
+    // built the same way the main Pack tab renders tiles, just from
+    // themeCoverage.json (every tile this theme actually covers) instead
+    // of the current picks. Fetched once, cached like themesCache.
+    var themeCoverageCache = null;
+
     function renderPreview() {
       preview.textContent = '';
       if (!selectedTheme) {
@@ -262,17 +269,6 @@ function mountTexturePackPicker(container, opts) {
       name.textContent = selectedTheme;
       preview.appendChild(name);
 
-      // No contact-sheet compositor in this static build (server/assets/
-      // contactSheetBuilder.js is Node/Jimp-only) - the small pre-baked
-      // theme-preview swatch stands in, same image the gallery grid uses.
-      var sheet = document.createElement('div');
-      sheet.className = 'tppPackSheet';
-      var img = document.createElement('img');
-      img.alt = selectedTheme + ' pack';
-      img.src = './assets/themePreviews/' + encodeURIComponent(selectedTheme) + '.png';
-      sheet.appendChild(img);
-      preview.appendChild(sheet);
-
       var useBtn = document.createElement('button');
       useBtn.type = 'button';
       useBtn.className = 'tppPackBtn primary';
@@ -280,6 +276,36 @@ function mountTexturePackPicker(container, opts) {
       useBtn.disabled = !loggedIn;
       useBtn.addEventListener('click', function () { applyTheme(selectedTheme); });
       preview.appendChild(useBtn);
+
+      var grid = document.createElement('div');
+      grid.className = 'tppTiles';
+      preview.appendChild(grid);
+
+      function renderFullPack() {
+        grid.textContent = '';
+        var tiles = (themeCoverageCache && themeCoverageCache[selectedTheme] || []).filter(function (t) { return t.covered; });
+        if (!tiles.length) { grid.textContent = 'No preview available for this pack.'; return; }
+        tiles.forEach(function (tile) {
+          var cell = document.createElement('div');
+          cell.className = 'tppTile';
+          var img = document.createElement('img');
+          img.src = tile.previewUrl;
+          img.alt = tile.label || tile.tileName;
+          img.loading = 'lazy';
+          cell.appendChild(img);
+          grid.appendChild(cell);
+        });
+      }
+
+      if (themeCoverageCache) {
+        renderFullPack();
+      } else {
+        grid.textContent = 'Loading pack…';
+        fetch('./assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (data) {
+          themeCoverageCache = data;
+          renderFullPack();
+        }).catch(function () { grid.textContent = 'Failed to load pack preview.'; });
+      }
     }
 
     function renderGrid() {

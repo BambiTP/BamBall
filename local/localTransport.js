@@ -106,6 +106,16 @@ var localTransport = (function () {
       if (gi.gameState.state === 'countdown' && !recorder.isRecording() && !recorder.isEnded()) {
         recorder.start(mapDataFrom(gi.gameState));
       }
+
+      // Confirmed behavior: picking a team is enough - anyone on red/blue
+      // who hasn't explicitly joined yet is auto-spawned the moment a
+      // match actually starts, rather than requiring a separate Join Game
+      // click. (Join Game still exists for jumping in mid-pregame, or
+      // after Leave Game, without waiting for the next match.)
+      if (gi.gameState.state === 'countdown' && !gi.gameState.getPlayer(localId)
+          && (client.team === 'red' || client.team === 'blue')) {
+        joinGame();
+      }
     });
 
     gi.emitter.on('matchEnd', function (data) {
@@ -158,9 +168,25 @@ var localTransport = (function () {
   // incoming.js's HANDLERS table, minus everything this build's UI never
   // sends (settings panels, leader controls, map editor - all dropped).
 
+  // Matches playerSessionManager.setTeam: switching team while already
+  // spawned kills the old body and respawns fresh on the new team
+  // immediately, rather than leaving a red body standing around for a
+  // player who's now blue.
   function setTeam(team) {
+    var previousTeam = client.team;
     client.team = team;
     packetRouter.dispatch({ type: 'team', team: team });
+
+    if (team === previousTeam) return;
+    var player = gi.gameState.getPlayer(localId);
+    if (player) {
+      gi.gameHelpers.removePlayer(localId);
+      packetRouter.dispatch({ type: 'leftGame' });
+      if (team === 'red' || team === 'blue') {
+        var respawned = gi.gameHelpers.spawnPlayer(localId, team, account.display_name);
+        packetRouter.dispatch({ type: 'joinedGame', player: serializePlayer(respawned) });
+      }
+    }
   }
 
   function joinGame() {
@@ -175,6 +201,16 @@ var localTransport = (function () {
     // Confirmed default: auto-start the moment the first (only) player
     // joins, since there's no leader/lobby step in this build.
     if (gi.gameState.state === 'pregame') gi.matchManager.startMatch();
+  }
+
+  function leaveGame() {
+    var player = gi.gameState.getPlayer(localId);
+    if (!player) {
+      packetRouter.dispatch({ type: 'error', message: 'not currently in the game' });
+      return;
+    }
+    gi.gameHelpers.removePlayer(localId);
+    packetRouter.dispatch({ type: 'leftGame' });
   }
 
   function setInput(packet) {
@@ -193,6 +229,7 @@ var localTransport = (function () {
       case 'join_blue':      return setTeam('blue');
       case 'join_spectator': return setTeam('spectator');
       case 'join_game':      return joinGame();
+      case 'leave_game':     return leaveGame();
       case 'input':          return setInput(packet);
       case 'ping':            return packetRouter.dispatch({ type: 'pong', t: packet.t });
       case 'detonateBomb': {
