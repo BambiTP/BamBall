@@ -70,13 +70,13 @@ function initSettingsMaker() {
 
     var file = collectFile();
     status.textContent = 'Saving…';
-    fetch(localTransport.workerUrl + '/api/settings/' + encodeURIComponent(name), {
+    fetch(activeTransport.workerUrl + '/api/settings/' + encodeURIComponent(name), {
       method: 'PUT',
       body: JSON.stringify(file),
     }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
       .then(function (result) {
         if (!result.ok) { status.textContent = 'Failed: ' + (result.data.error || 'unknown error'); return; }
-        status.textContent = 'Saved at ' + localTransport.workerUrl + result.data.url;
+        status.textContent = 'Saved at ' + activeTransport.workerUrl + result.data.url;
       })
       .catch(function () { status.textContent = 'Failed to reach the server.'; });
   });

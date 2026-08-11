@@ -26,13 +26,16 @@ function initSettingsFilesUI() {
   // unknown/invalid key, so a malformed file fails loudly rather than
   // silently applying half of itself.
   function applySettings(parsed) {
-    if (!localTransport.gameInstance()) return;
+    // gameInstance() is null for a P2P peer (only the host runs the real
+    // engine) - a peer has nothing to apply settings to locally, same as
+    // how a non-leader client couldn't touch these in the original game.
+    if (!activeTransport.gameInstance()) return;
     var apply = function () {
-      var gi = localTransport.gameInstance();
+      var gi = activeTransport.gameInstance();
       if (parsed.physics) gi.matchManager.updatePhysics(parsed.physics);
       if (parsed.match)   gi.matchManager.updateSettings(parsed.match);
     };
-    if (parsed.mapFile) localTransport.switchMap(parsed.mapFile).then(apply);
+    if (parsed.mapFile) activeTransport.switchMap(parsed.mapFile).then(apply);
     else apply();
   }
 
@@ -52,7 +55,7 @@ function initSettingsFilesUI() {
 
   wireFileSlot('pregameSettingsFile', 'pregameSettingsStatus', function (parsed) {
     pregameSettings = parsed;
-    if (localTransport.matchState() === 'pregame') applySettings(pregameSettings);
+    if (activeTransport.matchState() === 'pregame') applySettings(pregameSettings);
   });
 
   wireFileSlot('gameSettingsFile', 'gameSettingsStatus', function (parsed) {

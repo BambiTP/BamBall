@@ -29,10 +29,22 @@
   /* ---- loading overlay: plain HTML/CSS, no JS needed to show it - it's
      visible the instant the browser parses this far, before any of the
      72 deferred <script> tags below have even started fetching. Hidden by
-     main.js once boot() actually finishes (map, physics, textures ready). */
+     main.js once boot() actually finishes (map, physics, textures ready).
+     Starts hidden in markup - #modeSelect shows first, this only takes
+     over once a mode's actually been picked. */
   #loadingOverlay { position: absolute; inset: 0; background: #111; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: #ccc; font-size: 14px; }
   #loadingSpinner { width: 36px; height: 36px; border: 3px solid #333; border-top-color: #5588ff; border-radius: 50%; animation: loadingSpin 0.8s linear infinite; }
   @keyframes loadingSpin { to { transform: rotate(360deg); } }
+
+  /* ---- mode select: Play Solo / Create Group / Join Group by code -
+     shown first, before any engine/network boot work starts. */
+  #modeSelect { position: absolute; inset: 0; background: #111; z-index: 400; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #eee; }
+  #modeSelect h1 { font-size: 20px; margin: 0 0 6px; font-weight: normal; color: #999; }
+  #modeSelect button { font-size: 16px; padding: 12px 28px; border: none; border-radius: 6px; cursor: pointer; color: #fff; background: #2a9d4a; width: 220px; }
+  #joinGroupRow { display: flex; gap: 8px; align-items: center; }
+  #joinGroupRow input { font-size: 16px; padding: 11px 14px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; width: 130px; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
+  #joinGroupRow button { width: auto; background: #3355cc; }
+  #modeSelectStatus { font-size: 13px; color: #e07a7a; min-height: 16px; }
 
   /* ---- ESC menu ---- */
   #menu { position: absolute; inset: 0; background: rgba(10,10,12,0.92); color: #eee; display: flex; flex-direction: column; z-index: 100; }
@@ -72,7 +84,17 @@
 <link rel="stylesheet" href="shared/texturePackPicker.css">
 </head>
 <body>
-<div id="loadingOverlay"><div id="loadingSpinner"></div><div>Loading BambiPro…</div></div>
+<div id="modeSelect">
+  <h1>Play a match</h1>
+  <button id="playSoloBtn">Play Solo</button>
+  <button id="createGroupBtn">Create Group</button>
+  <div id="joinGroupRow">
+    <input id="joinGroupCode" placeholder="CODE" maxlength="6">
+    <button id="joinGroupBtn">Join Group</button>
+  </div>
+  <div id="modeSelectStatus"></div>
+</div>
+<div id="loadingOverlay" class="hidden"><div id="loadingSpinner"></div><div id="loadingText">Loading BambiPro…</div></div>
 <div id="viewport"></div>
 <div id="hud">
   <div id="hudScore">Red 0 - 0 Blue</div>
@@ -231,6 +253,8 @@
 <script src="shared/texturePackPicker.js" defer></script>
 <script src="local/localReplayRecorder.js" defer></script>
 <script src="local/localTransport.js" defer></script>
+<script src="local/webrtcTransport.js" defer></script>
+<script src="local/activeTransport.js" defer></script>
 <script src="local/joinUI.js" defer></script>
 <script src="local/menu.js" defer></script>
 <script src="local/settingsFiles.js" defer></script>

@@ -1,6 +1,7 @@
-// main.js - trimmed boot sequence: viewport + HUD + Join Red/Join Blue,
-// nothing else. Mirrors client/game/app/bootstrap.js's structure, but
-// boots against localTransport.js instead of a real WebSocket.
+// main.js - mode select (Play Solo / Create Group / Join Group) then the
+// boot sequence: viewport + HUD + join controls. Mirrors client/game/app/
+// bootstrap.js's structure, but boots against whichever transport the
+// player picked (local/activeTransport.js) instead of a real WebSocket.
 
 var renderer = null;
 
@@ -24,7 +25,13 @@ function nextFrame() {
   });
 }
 
-async function start() {
+// bootFn: activeTransport's own entry point - localTransport.boot,
+// webrtcTransport.createGroup, or webrtcTransport.joinGroup(code) already
+// bound to its argument. Everything past this point is identical
+// regardless of which transport is running underneath, since it all
+// operates on the shared `game` state that packetApplier populates the
+// same way no matter where the packets actually came from.
+async function start(bootFn) {
   wireGameStateEvents();
   wireSettingsStateEvents();
   wireLocalSettingsEvents();
@@ -48,7 +55,7 @@ async function start() {
     initFireInput();
     initKeyboardInput();
 
-    await localTransport.boot(); // engine + client physics worlds - already frame-spaced internally
+    await bootFn(); // engine + client physics worlds - already frame-spaced internally
     await nextFrame();
 
     var data = await spriteSheetLoader.fetch();
@@ -71,4 +78,77 @@ async function start() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', start);
+// Switches from the mode-select screen to the full loading-spinner screen
+// and runs the rest of the shared boot chain (start(), above). bootFn here
+// has nothing network-risky left to do - any connection attempt that
+// could fail (minting a room code, reaching a P2P host) already happened
+// and already succeeded, back on the mode-select screen (see below) -
+// keeping that distinction is what let a failed join earlier NOT end up
+// corrupting #loadingOverlay's DOM (start()'s catch block sets
+// .textContent on it, which - being a parent with child elements, not a
+// leaf - would silently delete its spinner/text children forever, breaking
+// every future attempt to show it again, not just this one).
+function beginBoot(transport, bootFn) {
+  activeTransport = transport;
+  document.getElementById('modeSelect').classList.add('hidden');
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+  start(bootFn);
+}
+
+function initModeSelect() {
+  var status   = document.getElementById('modeSelectStatus');
+  var soloBtn  = document.getElementById('playSoloBtn');
+  var createBtn = document.getElementById('createGroupBtn');
+  var joinBtn  = document.getElementById('joinGroupBtn');
+
+  function setButtonsDisabled(disabled) {
+    soloBtn.disabled = disabled;
+    createBtn.disabled = disabled;
+    joinBtn.disabled = disabled;
+  }
+
+  soloBtn.addEventListener('click', function () {
+    beginBoot(localTransport, localTransport.boot);
+  });
+
+  createBtn.addEventListener('click', function () {
+    setButtonsDisabled(true);
+    status.textContent = 'Creating group…';
+    webrtcTransport.createGroup().then(function () {
+      setButtonsDisabled(false);
+      // Already fully connected+joined at this point (createGroup's own
+      // promise doesn't resolve until gi.start() has run) - beginBoot's
+      // bootFn just needs to hand that back, nothing left to await.
+      beginBoot(webrtcTransport, function () { return Promise.resolve(); });
+    }).catch(function (err) {
+      setButtonsDisabled(false);
+      status.textContent = 'Could not create group: ' + err.message;
+    });
+  });
+
+  function tryJoin() {
+    var code = document.getElementById('joinGroupCode').value.trim();
+    if (!code) { status.textContent = 'Enter a room code first.'; return; }
+    setButtonsDisabled(true);
+    status.textContent = 'Connecting to host…';
+
+    webrtcTransport.joinGroup(code).then(function () {
+      setButtonsDisabled(false);
+      beginBoot(webrtcTransport, function () { return Promise.resolve(); });
+    }).catch(function (err) {
+      // Bad code, host offline, or (no TURN server - accepted gap) a
+      // strict NAT couldn't reach them directly. Stays right here on
+      // mode select with the code still in the box, not stranded on a
+      // stuck loading screen.
+      setButtonsDisabled(false);
+      status.textContent = 'Could not join: ' + err.message;
+    });
+  }
+
+  joinBtn.addEventListener('click', tryJoin);
+  document.getElementById('joinGroupCode').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') tryJoin();
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initModeSelect);
