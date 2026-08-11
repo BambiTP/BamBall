@@ -56,7 +56,6 @@
   .settingsSlot h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; opacity: 0.7; }
   .fileStatus { font-size: 11px; opacity: 0.7; min-height: 14px; }
   .menuBtn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #444; color: #fff; margin-right: 8px; margin-top: 6px; }
-  #recordToggleBtn.recording { background: #cc3333; }
 </style>
 <link rel="stylesheet" href="shared/texturePackPicker.css">
 </head>
@@ -85,7 +84,7 @@
     <button class="menuTabBtn active" data-tab="teamsPanel">Teams</button>
     <button class="menuTabBtn" data-tab="texturesPanel">Textures</button>
     <button class="menuTabBtn" data-tab="makerPanel">Settings Maker</button>
-    <button class="menuTabBtn" data-tab="recordPanel">Record &amp; Files</button>
+    <button class="menuTabBtn" data-tab="recordPanel">Files</button>
   </div>
   <div id="menuPanels">
     <div id="teamsPanel" class="menuPanel">
@@ -137,8 +136,6 @@
         <input type="file" id="gameSettingsFile" accept="application/json">
         <div class="fileStatus" id="gameSettingsStatus"></div>
       </div>
-      <button class="menuBtn" id="recordToggleBtn">Start Recording</button>
-      <button class="menuBtn" id="recordSaveBtn" disabled>Save Recording Now</button>
     </div>
   </div>
 </div>

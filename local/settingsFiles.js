@@ -1,10 +1,11 @@
 // settingsFiles.js - leader tooling: load a settings file (JSON, same
 // { physics?, match? } shape game/officialPresets.js's curated presets
 // already use) and apply it, with two slots - one for pregame (warm-up)
-// and one for the real game - plus manual recording control. Confirmed
-// requirement: upload works the same way whether the host is this browser
-// tab or (once web/host-cli exists) a terminal process reading the file
-// from disk instead of a <input type="file">.
+// and one for the real game. Confirmed requirement: upload works the same
+// way whether the host is this browser tab or (once web/host-cli exists)
+// a terminal process reading the file from disk instead of a
+// <input type="file">. Recording itself is automatic-only (starts when a
+// match goes live, see localTransport.js) - no manual pregame recording UI.
 //
 // "Leader" doesn't distinguish anyone yet in this solo build - there's
 // only one player, so they always have the controls. Once P2P lands and
@@ -65,31 +66,4 @@ function initSettingsFilesUI() {
     if (state === 'live' && gameSettings) applySettings(gameSettings);
     if (state === 'pregame' && pregameSettings) applySettings(pregameSettings);
   });
-
-  // ---- manual recording control (confirmed requirement) -------------------
-
-  var recordBtn = document.getElementById('recordToggleBtn');
-  var saveBtn   = document.getElementById('recordSaveBtn');
-
-  function refreshRecordUI() {
-    if (!recordBtn) return;
-    var recording = localTransport.isRecording();
-    recordBtn.textContent = recording ? 'Stop Recording' : 'Start Recording';
-    recordBtn.classList.toggle('recording', recording);
-    if (saveBtn) saveBtn.disabled = !recording;
-  }
-
-  if (recordBtn) {
-    recordBtn.addEventListener('click', function () {
-      if (localTransport.isRecording()) localTransport.stopRecording();
-      else localTransport.startRecording();
-      refreshRecordUI();
-    });
-  }
-  if (saveBtn) {
-    saveBtn.addEventListener('click', function () {
-      localTransport.saveRecording().then(refreshRecordUI);
-    });
-  }
-  refreshRecordUI();
 }

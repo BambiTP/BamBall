@@ -101,8 +101,7 @@ var localTransport = (function () {
       appEvents.emit('matchStateApplied', gi.gameState.state);
 
       // Matches the real server's rule (server/packets/outgoing.js): a
-      // fresh match going live always starts recording, if a host hasn't
-      // already started one by hand during pregame warm-up.
+      // fresh match going live always starts recording.
       if (gi.gameState.state === 'countdown' && !recorder.isRecording() && !recorder.isEnded()) {
         recorder.start(mapDataFrom(gi.gameState));
       }
@@ -303,40 +302,8 @@ var localTransport = (function () {
       });
   }
 
-  // Manual recording control (confirmed requirement: pregame can be
-  // recorded on demand, not only automatically at match start). Starting
-  // by hand during pregame needs a mapData snapshot too, since it may run
-  // before the automatic countdown-triggered start ever would.
-  function startRecording() {
-    if (!gi || !recorder) return false;
-    recorder.start(mapDataFrom(gi.gameState));
-    return true;
-  }
-
-  function stopRecording() {
-    if (!recorder) return;
-    recorder.stop();
-  }
-
-  function isRecording() {
-    return !!recorder && recorder.isRecording();
-  }
-
-  // Ends the recording now (not just pausing it) and downloads it, whether
-  // or not the match itself has ended - a host can save a pregame-only
-  // clip this way without waiting for a real match to finish.
-  function saveRecording() {
-    if (!recorder || !recorder.isRecording()) return Promise.resolve(false);
-    return recorder.finish({ scores: gi.gameState.scores, manual: true }).then(function (result) {
-      downloadBlob(result.blob, result.filename);
-      return persistRecording(result).then(function () { return true; });
-    });
-  }
-
   return {
     boot: boot, localId: localId,
-    startRecording: startRecording, stopRecording: stopRecording,
-    isRecording: isRecording, saveRecording: saveRecording,
     getRoomCode: function () { return roomCode; },
     gameInstance: function () { return gi; },
     matchState: function () { return gi ? gi.gameState.state : null; },
