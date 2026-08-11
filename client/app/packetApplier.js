@@ -77,7 +77,7 @@ var packetApplier = {
 
   // Called directly by app/bootstrap.js, not through packetRouter - see
   // header comment.
-  applyJoined: function (packet) {
+  applyJoined: async function (packet) {
     game.myId     = packet.inGame ? packet.id : null;
     game.clientId = packet.id !== undefined ? packet.id : null;
     game.leaderId = packet.leaderId !== undefined ? packet.leaderId : null;
@@ -101,8 +101,11 @@ var packetApplier = {
       renderer.applyCustomTileDef(packet.customTiles[ct]);
     }
 
-    physicsWorld.buildWalls(game.wallMap);
-    physicsWorld.buildSpikes(game.map);
+    // Chunked (not the plain buildWalls/buildSpikes a live wall edit uses
+    // below in scheduleWallRedraw) - this is the full-map pass at boot,
+    // the same "don't build ~1000+ Box2D bodies in one synchronous block"
+    // reasoning as engine/gameInstance.js's createMapChunked.
+    await physicsWorld.buildWallsAndSpikesChunked(game.wallMap, game.map, 40);
 
     if (packet.physics) settingsState.setPhysicsSettings(packet.physics);
 

@@ -141,6 +141,27 @@ class GameInstance {
   // engine never fetches a map itself - a stored map and one imported from
   // Fortunate Maps arrive here identically.
   loadMap(doc, ref = null) {
+    this._seedMapState(doc, ref);
+    this.createMap();
+    this._afterCreateMap(doc);
+  }
+
+  // Same end state as loadMap, but spreads the physics-body-creation loop
+  // (createMapChunked below) across several real animation frames instead
+  // of one unbroken synchronous block. Deliberately a SEPARATE method
+  // rather than a flag on loadMap: every other caller (the map editor's
+  // live tile edits, a future Node host-cli, setTile) needs the map to be
+  // fully wired up the instant the call returns, and making that path
+  // async everywhere it's used would be a much bigger, riskier change for
+  // no benefit there - only a one-tab local build's initial boot, which
+  // has no such synchronous callers waiting on it, needs this.
+  async loadMapChunked(doc, ref, batchSize) {
+    this._seedMapState(doc, ref);
+    await this.createMapChunked(batchSize);
+    this._afterCreateMap(doc);
+  }
+
+  _seedMapState(doc, ref) {
     const mapData = mapFormat.toRuntime(doc);
     this.gameState.map      = mapData.map;
     this.gameState.wallMap  = mapData.wallMap;
@@ -188,8 +209,10 @@ class GameInstance {
     this.gameState.tileOverrides      = {};
     this.gameState.mapOverlayStrokes  = [];
     this.gameState.tileOverlayStrokes = {};
+  }
 
-    this.createMap();
+  _afterCreateMap(doc) {
+    const mapData = { portals: this.gameState.portals, switches: this.gameState.switches };
     this.mapWiring.applyPortalData(mapData.portals);
     this.mapWiring.applySwitchData(mapData.switches);
 
@@ -271,35 +294,67 @@ class GameInstance {
   }
 
   createMap() {
+    this._resetDataMap();
+    for (let y = 0; y < this.gameState.map.length; y++) {
+      for (let x = 0; x < this.gameState.map[y].length; x++) {
+        this._buildTileBody(x, y);
+      }
+    }
+  }
+
+  // Same result as createMap, but yields to the event loop every batchSize
+  // tiles instead of building all ~1000+ tile bodies (each a real Box2D
+  // allocation - see physicsWorld.makeBody) in one synchronous stretch.
+  // Browser-only in practice (requestAnimationFrame): Node has no UI thread
+  // to protect, so there this just resolves on the next macrotask between
+  // batches, which is harmless.
+  async createMapChunked(batchSize) {
+    this._resetDataMap();
+    var count = 0;
+    for (let y = 0; y < this.gameState.map.length; y++) {
+      for (let x = 0; x < this.gameState.map[y].length; x++) {
+        this._buildTileBody(x, y);
+        count++;
+        if (count % batchSize === 0) await GameInstance._yield();
+      }
+    }
+  }
+
+  static _yield() {
+    if (typeof requestAnimationFrame === 'function') {
+      return new Promise(function (resolve) { requestAnimationFrame(function () { resolve(); }); });
+    }
+    return new Promise(function (resolve) { setTimeout(resolve, 0); });
+  }
+
+  _resetDataMap() {
     this.clearTiles();
     this.gameState.dataMap = this.gameState.map.map(function (row) {
       return row.map(function () {
         return null;
       });
     });
+  }
 
-    for (let y = 0; y < this.gameState.map.length; y++) {
-      for (let x = 0; x < this.gameState.map[y].length; x++) {
-        const id = this.gameState.map[y][x];
-        if (!id) continue;
+  _buildTileBody(x, y) {
+    const id = this.gameState.map[y][x];
+    if (!id) return;
 
-        const body = this.physicsWorld.makeBody(id, x, y, this.physicsLookup);
+    const body = this.physicsWorld.makeBody(id, x, y, this.physicsLookup);
 
-        const entry = {
-          id,
-          name:     this.physicsLookup[id]?.name     ?? 'unknown',
-          category: this.physicsLookup[id]?.category ?? 'unknown',
-          actions:  this.physicsLookup[id]?.actions,
-          isTile:   true,
-          x, y,
-          body,
-          sprite: null,
-        };
+    const entry = {
+      id,
+      name:     this.physicsLookup[id]?.name     ?? 'unknown',
+      category: this.physicsLookup[id]?.category ?? 'unknown',
+      actions:  this.physicsLookup[id]?.actions,
+      isTile:   true,
+      x, y,
+      body,
+      sprite: null,
+    };
 
-        if (body) body.SetUserData(entry);
-        this.gameState.setDataTile(x, y, entry);
-      }
-    }
+    if (body) body.SetUserData(entry);
+    this.gameState.setDataTile(x, y, entry);
   }
 
   clearTiles() {
