@@ -8,5 +8,13 @@
       "binding": "REPLAYS",
       "bucket_name": "bambipro-replays"
     }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOM_SIGNAL", "class_name": "RoomSignal" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RoomSignal"] }
   ]
 }
