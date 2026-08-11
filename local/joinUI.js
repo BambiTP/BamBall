@@ -21,8 +21,12 @@ function enableJoinUI() {
   refreshJoinUI();
 }
 
+// Lives inside the Esc menu's Teams tab now (index.html #joinControls),
+// not floating over the game - Esc itself is what shows/hides it, so
+// there's no separate "hide while playing" case to handle here anymore;
+// just keep every button's enabled/active state correct for whenever the
+// menu happens to be open.
 function refreshJoinUI() {
-  var panel    = document.getElementById('joinPanel');
   var redBtn   = document.getElementById('joinRedBtn');
   var blueBtn  = document.getElementById('joinBlueBtn');
   var gameBtn  = document.getElementById('joinGameBtn');
@@ -31,17 +35,10 @@ function refreshJoinUI() {
   var team    = game.myTeam || null; // set by team:changed below
   var inGame  = game.myId !== null;
 
-  // Once you're actually playing, this panel sitting in the middle of the
-  // screen is just clutter over your own ball - hide it entirely (Leave
-  // Game is still reachable from the Esc menu's Teams tab). Only
-  // Join Red/Blue - i.e. spectating - keeps it visible.
-  if (panel) panel.classList.toggle('hidden', inGame);
-  if (inGame) return;
-
   redBtn.disabled   = !joinUIReady;
   blueBtn.disabled  = !joinUIReady;
-  gameBtn.disabled  = !joinUIReady || (team !== 'red' && team !== 'blue');
-  leaveBtn.disabled = true;
+  gameBtn.disabled  = !joinUIReady || inGame || (team !== 'red' && team !== 'blue');
+  leaveBtn.disabled = !joinUIReady || !inGame;
 
   redBtn.classList.toggle('active', team === 'red');
   blueBtn.classList.toggle('active', team === 'blue');

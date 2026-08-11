@@ -10,10 +10,14 @@
   #hudScore { font-size: 20px; font-weight: bold; }
   #hudTimer { font-size: 14px; opacity: 0.8; }
   #hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); color: #aaa; font-size: 12px; }
-  #joinPanel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 10px; align-items: center; }
-  #joinPanel .joinRow { display: flex; gap: 16px; }
-  #joinPanel button { font-size: 18px; padding: 12px 28px; border: none; border-radius: 6px; cursor: pointer; color: #fff; }
-  #joinPanel button:disabled { opacity: 0.4; cursor: default; }
+  .hidden { display: none !important; }
+
+  /* ---- join controls: live inside the Esc menu's Teams tab, not floating
+     over the game (see #joinControls under "teams tab" below for layout -
+     these are just the button colors, shared regardless of where they sit). */
+  .joinRow { display: flex; gap: 16px; }
+  #joinControls button { font-size: 16px; padding: 10px 24px; border: none; border-radius: 6px; cursor: pointer; color: #fff; }
+  #joinControls button:disabled { opacity: 0.4; cursor: default; }
   #joinRedBtn { background: #cc3333; }
   #joinRedBtn.active { outline: 3px solid #fff; }
   #joinBlueBtn { background: #3355cc; }
@@ -21,7 +25,6 @@
   #joinGameBtn { background: #2a9d4a; }
   #leaveGameBtn { background: #555; }
   #leaveGroupBtn { background: #333; font-size: 13px; padding: 6px 14px; }
-  .hidden { display: none !important; }
 
   /* ---- loading overlay: plain HTML/CSS, no JS needed to show it - it's
      visible the instant the browser parses this far, before any of the
@@ -41,6 +44,7 @@
   #menuCloseHint { position: absolute; top: 10px; right: 16px; color: #777; font-size: 12px; }
 
   /* ---- teams tab ---- */
+  #joinControls { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #333; }
   #teamsGrid { display: flex; gap: 16px; }
   .teamBox { flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; min-height: 200px; }
   .teamBox h3 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; }
@@ -75,17 +79,6 @@
   <div id="hudTimer">-:--</div>
 </div>
 <div id="hint">Esc for menu</div>
-<div id="joinPanel">
-  <div class="joinRow">
-    <button id="joinRedBtn">Join Red Team</button>
-    <button id="joinBlueBtn">Join Blue Team</button>
-  </div>
-  <div class="joinRow">
-    <button id="joinGameBtn">Join Game</button>
-    <button id="leaveGameBtn">Leave Game</button>
-  </div>
-  <button id="leaveGroupBtn">Leave Group</button>
-</div>
 
 <div id="menu" class="hidden">
   <div id="menuCloseHint">Esc to close</div>
@@ -97,6 +90,17 @@
   </div>
   <div id="menuPanels">
     <div id="teamsPanel" class="menuPanel">
+      <div id="joinControls">
+        <div class="joinRow">
+          <button id="joinRedBtn">Join Red Team</button>
+          <button id="joinBlueBtn">Join Blue Team</button>
+        </div>
+        <div class="joinRow">
+          <button id="joinGameBtn">Join Game</button>
+          <button id="leaveGameBtn">Leave Game</button>
+        </div>
+        <button id="leaveGroupBtn">Leave Group</button>
+      </div>
       <div id="teamsGrid">
         <div class="teamBox" data-team="red"><h3>Red</h3><div class="teamList" id="redTeamList"></div></div>
         <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
