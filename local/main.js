@@ -11,7 +11,20 @@ function registerPacketHandlers() {
   }
 }
 
-function start() {
+// Same reasoning as localTransport.js's own nextFrame(): splits boot's
+// remaining heavy synchronous steps (building the sliced texture atlas,
+// then drawing/baking the full tile map) across real painted frames so the
+// browser stays responsive between them, instead of doing the exact same
+// full-fidelity work as one unbroken block. No work is skipped, reduced,
+// or lowered in quality - every machine does the same work either way,
+// this only changes how it's spaced out.
+function nextFrame() {
+  return new Promise(function (resolve) {
+    requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+  });
+}
+
+async function start() {
   wireGameStateEvents();
   wireSettingsStateEvents();
   wireLocalSettingsEvents();
@@ -30,30 +43,32 @@ function start() {
   var canvas = document.getElementById('viewport');
   renderer = new Renderer(canvas);
 
-  renderer.init().then(function () {
+  try {
+    await renderer.init();
     initFireInput();
     initKeyboardInput();
-    return localTransport.boot();
-  }).then(function () {
-    return spriteSheetLoader.fetch();
-  }).then(function (data) {
+
+    await localTransport.boot(); // engine + client physics worlds - already frame-spaced internally
+    await nextFrame();
+
+    var data = await spriteSheetLoader.fetch();
     var manifestPromise = fetch(data.manifestUrl).then(function (res) { return res.json(); });
     var texturesPromise = renderer.fetchTextures({ packed: data.sheetUrl, walls: data.wallsUrl });
-    return Promise.all([manifestPromise, texturesPromise]).then(function (results) {
-      renderer.applyManifest(results[0]);
-      spriteSheetLoader.loadedHash = data.hash || null;
-    });
-  }).then(function () {
-    renderer.start();
+    var results = await Promise.all([manifestPromise, texturesPromise]);
+    renderer.applyManifest(results[0]); // slices + bakes the full sprite atlas
+    spriteSheetLoader.loadedHash = data.hash || null;
+    await nextFrame();
+
+    renderer.start(); // draws every map tile + bakes the background
     startPhysicsLoop();
     enableJoinUI();
     var overlay = document.getElementById('loadingOverlay');
     if (overlay) overlay.classList.add('hidden');
-  }).catch(function (err) {
+  } catch (err) {
     console.error('[main] boot failed:', err);
-    var overlay = document.getElementById('loadingOverlay');
-    if (overlay) overlay.textContent = 'Failed to load - check the console (F12) for details.';
-  });
+    var failOverlay = document.getElementById('loadingOverlay');
+    if (failOverlay) failOverlay.textContent = 'Failed to load - check the console (F12) for details.';
+  }
 }
 
 document.addEventListener('DOMContentLoaded', start);

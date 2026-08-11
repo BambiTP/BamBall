@@ -257,6 +257,20 @@ var localTransport = (function () {
   };
   globalThis.socket = socket;
 
+  // Waits for a real, already-painted frame (double rAF, not one - a single
+  // rAF fires before the browser paints, so code after it can still land in
+  // the same unbroken stretch of work as whatever came before). Used to
+  // split up boot's few genuinely heavy synchronous steps (each one is a
+  // legitimate one-time cost, not something to fake or skip - building
+  // ~1400 Box2D bodies for a full room's worth of walls IS real work on any
+  // machine) so the browser gets to actually paint/stay responsive between
+  // them instead of running all of it back to back as one unbroken block.
+  function nextFrame() {
+    return new Promise(function (resolve) {
+      requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+    });
+  }
+
   // Boots the engine, loads the bundled default map, and seeds client
   // state exactly like a real 'joined' packet would (built by the same,
   // unmodified packetBuilders.joined - trivial local stand-ins for
@@ -264,23 +278,33 @@ var localTransport = (function () {
   // authoritative tick+snapshot loop; the caller (main.js) is responsible
   // for starting the client's own prediction loop (client/game/loop.js)
   // separately, same as the real client does against a real server.
-  function boot() {
+  async function boot() {
     requestRoomCode(); // fire-and-forget in parallel - never blocks the map/game from loading
-    return fetch('./assets/maps/default.json')
-      .then(function (res) { return res.json(); })
-      .then(function (mapDoc) {
-        gi = new GameInstance(gameConfig, 'game');
-        recorder = createLocalReplayRecorder(gi);
-        wireEngineEvents();
-        gi.loadMap(mapDoc);
+    var res    = await fetch('./assets/maps/default.json');
+    var mapDoc = await res.json();
 
-        var room = { instance: gi, kind: 'game', leaderId: localId };
-        var joinedPacket = packetBuilders.joined(room, client, account, mapDataFrom(gi.gameState));
-        packetApplier.applyJoined(joinedPacket);
+    gi = new GameInstance(gameConfig, 'game');
+    recorder = createLocalReplayRecorder(gi);
+    wireEngineEvents();
 
-        gi.start();
-        return gi;
-      });
+    // The authoritative (engine) physics world: one Box2D body per wall
+    // tile on the whole map (~1200+ for the default map) - the single
+    // heaviest step in boot.
+    gi.loadMap(mapDoc);
+    await nextFrame();
+
+    // The separate client-side prediction physics world (client/
+    // physicsWorld.js, built inside applyJoined below) - same map, its own
+    // Box2D bodies, needed so the local player's own movement predicts
+    // correctly. Real, separate work - not skipped, just given its own
+    // frame instead of running immediately after the engine world above.
+    var room = { instance: gi, kind: 'game', leaderId: localId };
+    var joinedPacket = packetBuilders.joined(room, client, account, mapDataFrom(gi.gameState));
+    packetApplier.applyJoined(joinedPacket);
+    await nextFrame();
+
+    gi.start();
+    return gi;
   }
 
   // Switches the live game to a different bundled map (assets/maps/<file>)
