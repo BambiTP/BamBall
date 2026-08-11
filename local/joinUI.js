@@ -22,6 +22,7 @@ function enableJoinUI() {
 }
 
 function refreshJoinUI() {
+  var panel    = document.getElementById('joinPanel');
   var redBtn   = document.getElementById('joinRedBtn');
   var blueBtn  = document.getElementById('joinBlueBtn');
   var gameBtn  = document.getElementById('joinGameBtn');
@@ -30,10 +31,17 @@ function refreshJoinUI() {
   var team    = game.myTeam || null; // set by team:changed below
   var inGame  = game.myId !== null;
 
+  // Once you're actually playing, this panel sitting in the middle of the
+  // screen is just clutter over your own ball - hide it entirely (Leave
+  // Game is still reachable from the Esc menu's Teams tab). Only
+  // Join Red/Blue - i.e. spectating - keeps it visible.
+  if (panel) panel.classList.toggle('hidden', inGame);
+  if (inGame) return;
+
   redBtn.disabled   = !joinUIReady;
   blueBtn.disabled  = !joinUIReady;
-  gameBtn.disabled  = !joinUIReady || inGame || (team !== 'red' && team !== 'blue');
-  leaveBtn.disabled = !joinUIReady || !inGame;
+  gameBtn.disabled  = !joinUIReady || (team !== 'red' && team !== 'blue');
+  leaveBtn.disabled = true;
 
   redBtn.classList.toggle('active', team === 'red');
   blueBtn.classList.toggle('active', team === 'blue');

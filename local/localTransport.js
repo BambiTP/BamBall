@@ -15,7 +15,7 @@
 // only ever one local client here.
 
 var localTransport = (function () {
-  var WORKER_URL = 'https://bamball-worker.zomball.workers.dev';
+  var WORKER_URL = 'https://api.bambipro.workers.dev';
 
   var gi = null;
   var recorder = null;

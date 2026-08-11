@@ -1,4 +1,4 @@
-// bamball-worker - the one piece of always-on infrastructure this project
+// api.bambipro.workers.dev - the one piece of always-on infrastructure this project
 // uses. Deliberately small: room codes + permanent replay storage today;
 // WebRTC signaling and the TagPro-login verification endpoint (both
 // designed, not yet built) will live here too, but neither carries game
@@ -189,6 +189,10 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/api/rooms') {
       return handleCreateRoom(env);
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/replays') {
+      return handleListReplays(env, url.searchParams.get('cursor'));
     }
 
     var replayUpload = url.pathname.match(/^\/api\/replays\/([A-Za-z0-9]+)$/);
