@@ -57,28 +57,73 @@ function formatDate(iso) {
 }
 
 function scoreCell(item) {
-  if (!item.scores) return '—';
-  var red  = item.scores.red  !== undefined ? item.scores.red  : '?';
-  var blue = item.scores.blue !== undefined ? item.scores.blue : '?';
-  return '<span class="score"><span class="red">' + red + '</span> - <span class="blue">' + blue + '</span></span>';
+  var span = document.createElement('span');
+  span.className = 'score';
+  if (!item.scores) { span.textContent = '—'; return span; }
+
+  var red = document.createElement('span');
+  red.className = 'red';
+  red.textContent = item.scores.red !== undefined ? item.scores.red : '?';
+
+  var blue = document.createElement('span');
+  blue.className = 'blue';
+  blue.textContent = item.scores.blue !== undefined ? item.scores.blue : '?';
+
+  span.appendChild(red);
+  span.appendChild(document.createTextNode(' - '));
+  span.appendChild(blue);
+  return span;
 }
 
 function winnerCell(item) {
-  if (!item.winner) return '—';
-  if (item.winner === 'red')  return '<span class="red">Red</span>';
-  if (item.winner === 'blue') return '<span class="blue">Blue</span>';
-  return item.winner; // e.g. 'tie'
+  if (item.winner === 'red' || item.winner === 'blue') {
+    var span = document.createElement('span');
+    span.className = item.winner;
+    span.textContent = item.winner === 'red' ? 'Red' : 'Blue';
+    return span;
+  }
+  return document.createTextNode(item.winner ? String(item.winner) : '—'); // e.g. 'tie'
 }
 
+// Every field on `item` can come straight from an untrusted upload
+// (worker/src/index.js's X-Replay-Meta is attacker-suppliable content, not
+// server-computed data) - built with createElement/textContent throughout,
+// never innerHTML, so nothing here can inject markup no matter what a
+// replay's stored metadata contains.
 function addRow(item) {
   var tr = document.createElement('tr');
-  tr.innerHTML =
-    '<td><code>' + item.code + '</code></td>' +
-    '<td>' + (item.mapName || 'Unknown map') + '</td>' +
-    '<td>' + scoreCell(item) + '</td>' +
-    '<td>' + winnerCell(item) + '</td>' +
-    '<td>' + formatDate(item.uploadedAt) + '</td>' +
-    '<td><a class="dl" href="' + WORKER_URL + '/replays/' + item.code + '" download>Download</a></td>';
+
+  var codeTd = document.createElement('td');
+  var codeEl = document.createElement('code');
+  codeEl.textContent = item.code;
+  codeTd.appendChild(codeEl);
+  tr.appendChild(codeTd);
+
+  var mapTd = document.createElement('td');
+  mapTd.textContent = item.mapName || 'Unknown map';
+  tr.appendChild(mapTd);
+
+  var scoreTd = document.createElement('td');
+  scoreTd.appendChild(scoreCell(item));
+  tr.appendChild(scoreTd);
+
+  var winnerTd = document.createElement('td');
+  winnerTd.appendChild(winnerCell(item));
+  tr.appendChild(winnerTd);
+
+  var dateTd = document.createElement('td');
+  dateTd.textContent = formatDate(item.uploadedAt);
+  tr.appendChild(dateTd);
+
+  var dlTd = document.createElement('td');
+  var dlLink = document.createElement('a');
+  dlLink.className = 'dl';
+  dlLink.href = WORKER_URL + '/replays/' + encodeURIComponent(item.code);
+  dlLink.setAttribute('download', '');
+  dlLink.textContent = 'Download';
+  dlTd.appendChild(dlLink);
+  tr.appendChild(dlTd);
+
   rows.appendChild(tr);
 }
 

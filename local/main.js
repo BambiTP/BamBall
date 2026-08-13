@@ -107,6 +107,18 @@ function initModeSelect() {
     joinBtn.disabled = disabled;
   }
 
+  initIdentityUI();
+
+  // Carried across the reload packetApplier.js's 'kicked' handler triggers -
+  // this is the first code on the mode-select screen to run afterward.
+  try {
+    var kickedReason = sessionStorage.getItem('bambipro_kicked_reason');
+    if (kickedReason) {
+      status.textContent = kickedReason;
+      sessionStorage.removeItem('bambipro_kicked_reason');
+    }
+  } catch (err) {}
+
   soloBtn.addEventListener('click', function () {
     beginBoot(localTransport, localTransport.boot);
   });
@@ -114,7 +126,8 @@ function initModeSelect() {
   createBtn.addEventListener('click', function () {
     setButtonsDisabled(true);
     status.textContent = 'Creating group…';
-    webrtcTransport.createGroup().then(function () {
+    var password = document.getElementById('createGroupPassword').value;
+    webrtcTransport.createGroup(password, currentIdentity()).then(function () {
       setButtonsDisabled(false);
       // Already fully connected+joined at this point (createGroup's own
       // promise doesn't resolve until gi.start() has run) - beginBoot's
@@ -129,10 +142,11 @@ function initModeSelect() {
   function tryJoin() {
     var code = document.getElementById('joinGroupCode').value.trim();
     if (!code) { status.textContent = 'Enter a room code first.'; return; }
+    var password = document.getElementById('joinGroupPassword').value;
     setButtonsDisabled(true);
     status.textContent = 'Connecting to host…';
 
-    webrtcTransport.joinGroup(code).then(function () {
+    webrtcTransport.joinGroup(code, password, currentIdentity()).then(function () {
       setButtonsDisabled(false);
       beginBoot(webrtcTransport, function () { return Promise.resolve(); });
     }).catch(function (err) {
@@ -149,6 +163,82 @@ function initModeSelect() {
   document.getElementById('joinGroupCode').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') tryJoin();
   });
+
+  // Live, always-on-the-homepage list of currently-open rooms (worker/src/
+  // roomDirectory.js) - clicking an open room's row joins it in one click;
+  // a locked one (🔒) prompts for its password right there instead of
+  // making you find and fill in a separate field. Refreshes on an
+  // interval only while this screen is actually showing - self-cancels
+  // once beginBoot() hides #modeSelect, rather than needing a separate
+  // hook into that function.
+  function emptyRoomListRow(text) {
+    return '<tr class="roomListEmptyRow"><td colspan="4">' + text + '</td></tr>';
+  }
+
+  function refreshRoomList() {
+    var container = document.getElementById('roomListRows');
+    if (!container) return;
+    fetch(webrtcTransport.workerUrl + '/api/rooms').then(function (res) { return res.json(); })
+      .then(function (data) {
+        var rooms = data.rooms || [];
+        if (!rooms.length) { container.innerHTML = emptyRoomListRow('No open rooms right now'); return; }
+
+        container.textContent = '';
+        rooms.forEach(function (room) {
+          var row = document.createElement('tr');
+
+          var lockCell = document.createElement('td');
+          lockCell.className = 'roomLockCol';
+          lockCell.textContent = room.hasPassword ? '🔒' : '';
+          row.appendChild(lockCell);
+
+          var codeCell = document.createElement('td');
+          codeCell.className = 'roomCodeCol';
+          codeCell.textContent = room.code;
+          row.appendChild(codeCell);
+
+          var hostCell = document.createElement('td');
+          hostCell.className = 'roomHostCol';
+          hostCell.textContent = room.hostName;
+          row.appendChild(hostCell);
+
+          var playersCell = document.createElement('td');
+          playersCell.className = 'roomPlayersCol';
+          playersCell.textContent = room.playerCount;
+          row.appendChild(playersCell);
+
+          row.addEventListener('click', function () {
+            document.getElementById('joinGroupCode').value = room.code;
+            if (room.hasPassword) {
+              var password = prompt('Password for room ' + room.code + ':');
+              if (password === null) return; // cancelled
+              document.getElementById('joinGroupPassword').value = password;
+            }
+            tryJoin();
+          });
+
+          container.appendChild(row);
+        });
+      })
+      .catch(function () { container.innerHTML = emptyRoomListRow('Couldn’t load room list'); });
+  }
+
+  refreshRoomList();
+  var roomListTimer = setInterval(function () {
+    if (document.getElementById('modeSelect').classList.contains('hidden')) { clearInterval(roomListTimer); return; }
+    refreshRoomList();
+  }, 5000);
+
+  // A room code shared as a link (menu.js's "Copy link" button appends
+  // ?room=CODE) skips typing the code back in by hand - prefill it and
+  // join immediately. Falls through to the normal mode-select screen,
+  // code still in the box, on any failure (bad/stale code, host offline) -
+  // same as a manually-typed join gone wrong, not a dead end.
+  var linkedRoom = new URLSearchParams(location.search).get('room');
+  if (linkedRoom) {
+    document.getElementById('joinGroupCode').value = linkedRoom.toUpperCase();
+    tryJoin();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', initModeSelect);

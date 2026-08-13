@@ -9,12 +9,25 @@
       "bucket_name": "bambipro-replays"
     }
   ],
+  // TAGPRO_LOGIN: short-lived (expirationTtl) state for the in-progress
+  // TagPro flair-verification login flow (see worker/src/tagproAuth.js).
+  // `wrangler dev` (local mode, the default) simulates KV without touching
+  // this regardless, but this id is the real production namespace
+  // (created via `wrangler kv namespace create TAGPRO_LOGIN`).
+  "kv_namespaces": [
+    {
+      "binding": "TAGPRO_LOGIN",
+      "id": "8c93e120bc1d49979d55fb9cb5c04b1d"
+    }
+  ],
   "durable_objects": {
     "bindings": [
-      { "name": "ROOM_SIGNAL", "class_name": "RoomSignal" }
+      { "name": "ROOM_SIGNAL", "class_name": "RoomSignal" },
+      { "name": "ROOM_DIRECTORY", "class_name": "RoomDirectory" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["RoomSignal"] }
+    { "tag": "v1", "new_sqlite_classes": ["RoomSignal"] },
+    { "tag": "v2", "new_sqlite_classes": ["RoomDirectory"] }
   ]
 }

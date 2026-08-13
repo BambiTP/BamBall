@@ -38,6 +38,7 @@ function teamCode(team) {
 //   rb = rollingBomb  (only present when 1)
 //   jj = jukeJuice    (only present when 1)
 //   kl = kothLeader   (only present when 1) - currently leading a koth pup contest
+//   au = authed       (only present when 1) - host-verified TagPro login (see local/webrtcTransport.js)
 function serializeEntity(player) {
   const entity = {
     id: player.id,
@@ -60,6 +61,7 @@ function serializeEntity(player) {
   if (player.jukeJuice)   entity.jj = 1;
   if (player.kothLeader)  entity.kl = 1;
   if (player.matchFrozen) entity.mf = 1;
+  if (player.authed)      entity.au = 1;
 
   return entity;
 }

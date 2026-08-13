@@ -51,8 +51,8 @@ var webrtcTransport = (function () {
   // ---- HOST-only state -----------------------------------------------
   var nextClientId = 2; // 1 is reserved for the host's own local player
   var peers = {}; // signalPeerId -> { pc, dc, clientId, client: {team, account}, ready:boolean }
-  var hostClient = { id: LOCAL_CLIENT_ID, team: 'spectator' };
-  var hostAccount = { display_name: 'Host' };
+  var hostClient = { id: LOCAL_CLIENT_ID, team: 'spectator', muted: false };
+  var hostAccount = { display_name: 'Host', authed: false };
 
   // ---- PEER-only state -------------------------------------------------
   var hostSignalId = null;
@@ -103,10 +103,12 @@ var webrtcTransport = (function () {
 
   // Resolves once 'welcome' arrives (peerId assigned, hostId known, current
   // peer list) - both boot paths below need that before doing anything else.
-  function connectSignal(code, wantRole) {
+  function connectSignal(code, wantRole, password, name) {
     myPeerId = newPeerId();
     role = wantRole;
-    var url = SIGNAL_URL + code + '?peerId=' + myPeerId + '&role=' + wantRole;
+    var url = SIGNAL_URL + code + '?peerId=' + myPeerId + '&role=' + wantRole
+      + (password ? '&password=' + encodeURIComponent(password) : '')
+      + (name ? '&name=' + encodeURIComponent(name) : ''); // host only - seeds roomDirectory.js's hostName, see bootAsHost
     signalWs = new WebSocket(url);
 
     signalReady = new Promise(function (resolve, reject) {
@@ -117,8 +119,14 @@ var webrtcTransport = (function () {
           resolve(msg);
         }
       });
+      // Any abnormal close before 'welcome' ever arrives means the DO
+      // rejected the connection outright (room already has a host - 4001,
+      // wrong password - 4002, or anything else) - generalized rather than
+      // matching specific codes one at a time, so a new rejection reason
+      // added to roomSignal.js later doesn't also need a matching update
+      // here to actually surface instead of hanging silently.
       signalWs.addEventListener('close', function (event) {
-        if (event.code === 4001) reject(new Error(event.reason || 'room already has a host'));
+        if (event.code !== 1000) reject(new Error(event.reason || 'signaling connection closed (code ' + event.code + ')'));
       });
       signalWs.addEventListener('error', function () { reject(new Error('signaling connection failed')); });
     });
@@ -144,7 +152,12 @@ var webrtcTransport = (function () {
       if (data.candidate) entry.pc.addIceCandidate(data.candidate).catch(function () {});
       else if (data.type === 'answer') entry.pc.setRemoteDescription(data).catch(function () {});
     } else {
-      if (!hostPc) return;
+      // Only ever trust signals actually sent by the host - the signaling
+      // DO relays a 'signal' message between any two connected peers, not
+      // just peer<->host (see roomSignal.js's handleMessage), so without
+      // this check another peer in the room could send a forged offer here
+      // and corrupt this connection's negotiation state with the real host.
+      if (!hostPc || fromPeerId !== hostSignalId) return;
       if (data.candidate) hostPc.addIceCandidate(data.candidate).catch(function () {});
       else if (data.type === 'offer') handleHostOffer(data);
     }
@@ -163,12 +176,61 @@ var webrtcTransport = (function () {
     delete peers[peerId];
   }
 
+  // ---- host moderation: kick + mute (room owner only, gated in the UI by
+  // role() === 'host' - these are no-ops with nothing to find if a peer or
+  // solo player ever called them, since `peers` is host-only state) --------
+
+  function findPeerEntry(clientId) {
+    for (var id in peers) {
+      if (peers[id].clientId === clientId) return { peerId: id, entry: peers[id] };
+    }
+    return null;
+  }
+
+  function kickClient(clientId) {
+    var found = findPeerEntry(clientId);
+    if (!found) return;
+    var peerId = found.peerId;
+    safeSend(found.entry, { type: 'kicked', message: 'You have been kicked from this room.' });
+    // A brief delay, not an immediate close - closing an RTCPeerConnection
+    // right after send() risks the message never actually flushing to the
+    // wire before the local side tears down, which would leave the kicked
+    // player's screen just silently frozen instead of explaining why.
+    setTimeout(function () { handlePeerLeft(peerId); }, 300);
+  }
+
+  function setMuted(clientId, muted) {
+    if (clientId === LOCAL_CLIENT_ID) { hostClient.muted = !!muted; return; }
+    var found = findPeerEntry(clientId);
+    if (found) found.entry.client.muted = !!muted;
+  }
+
+  function isMuted(clientId) {
+    if (clientId === LOCAL_CLIENT_ID) return !!hostClient.muted;
+    var found = findPeerEntry(clientId);
+    return !!(found && found.entry.client.muted);
+  }
+
+  // Same disconnect as kickClient, plus telling the signaling DO (over the
+  // already-open signalWs, not a new HTTP call) to remember this peer's IP
+  // so they can't just reconnect with a fresh peerId - see
+  // worker/src/roomSignal.js's handleMessage for the 'ban' case and why
+  // this is IP-based rather than peerId-based.
+  function banClient(clientId) {
+    var found = findPeerEntry(clientId);
+    if (!found) return;
+    var peerId = found.peerId;
+    safeSend(found.entry, { type: 'kicked', message: 'You have been banned from this room.' });
+    signalWs.send(JSON.stringify({ type: 'ban', peerId: peerId }));
+    setTimeout(function () { handlePeerLeft(peerId); }, 300);
+  }
+
   // ---- HOST role -----------------------------------------------------
 
   function handlePeerJoined(peerId) {
     var clientId = nextClientId++;
     var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    var entry = { pc: pc, dc: null, clientId: clientId, client: { id: clientId, team: 'spectator' }, account: { display_name: 'Player ' + clientId }, ready: false };
+    var entry = { pc: pc, dc: null, clientId: clientId, client: { id: clientId, team: 'spectator', muted: false }, account: { display_name: 'Player ' + clientId, authed: false }, ready: false };
     peers[peerId] = entry;
 
     pc.addEventListener('icecandidate', function (event) {
@@ -330,7 +392,7 @@ var webrtcTransport = (function () {
       gi.gameHelpers.removePlayer(clientId);
       dispatch({ type: 'leftGame' });
       if (team === 'red' || team === 'blue') {
-        var respawned = gi.gameHelpers.spawnPlayer(clientId, team, accountRec.display_name);
+        var respawned = gi.gameHelpers.spawnPlayer(clientId, team, accountRec.display_name, accountRec.authed);
         dispatch({ type: 'joinedGame', player: serializePlayer(respawned) });
       }
     }
@@ -339,7 +401,7 @@ var webrtcTransport = (function () {
   function joinGameFor(clientId, clientRec, accountRec) {
     if (gi.gameState.getPlayer(clientId)) return;
     if (clientRec.team !== 'red' && clientRec.team !== 'blue') return;
-    var player = gi.gameHelpers.spawnPlayer(clientId, clientRec.team, accountRec.display_name);
+    var player = gi.gameHelpers.spawnPlayer(clientId, clientRec.team, accountRec.display_name, accountRec.authed);
     var packet = { type: 'joinedGame', player: serializePlayer(player) };
     if (clientId === LOCAL_CLIENT_ID) packetRouter.dispatch(packet);
     else broadcastToOne(clientId, packet);
@@ -350,6 +412,19 @@ var webrtcTransport = (function () {
     for (var id in peers) {
       if (peers[id].clientId === clientId) safeSend(peers[id], packet);
     }
+  }
+
+  // A browser can't safely hold AUTH_SECRET itself, so a peer's
+  // self-reported TagPro token has to be checked against the Worker (which
+  // does hold it) before the host trusts `authed: true` for them - see
+  // worker/src/tagproAuth.js's handleVerifyToken. Reused for the host's
+  // own identity too (see createGroup, below) rather than trusting
+  // localStorage unconditionally, in case it's ever tampered with.
+  // TagproAuth (local/tagproAuthLib.js) is the portable drop-in client for
+  // this - shared here rather than duplicated so the verify logic only
+  // exists in one place.
+  function verifyTagproToken(tagpro) {
+    return TagproAuth.verifyToken(WORKER_URL, tagpro);
   }
 
   // dispatch: where THIS client's own reply packets go - packetRouter.dispatch
@@ -387,6 +462,38 @@ var webrtcTransport = (function () {
         if (affected) gi.emitter.emit('update', affected);
         return;
       }
+      case 'chat': {
+        if (clientRec.muted) { dispatch({ type: 'error', message: 'You are muted in this room.' }); return; }
+        var text = typeof packet.text === 'string' ? packet.text.trim().slice(0, 240) : '';
+        if (!text) return;
+        var chatPacket = packetBuilders.chat({ id: clientId, name: accountRec.display_name, text: text });
+        packetRouter.dispatch(chatPacket);
+        recorder.recordBroadcast(chatPacket);
+        broadcastToPeers(chatPacket);
+        return;
+      }
+      // A peer's one-time self-introduction, sent right after they apply
+      // the 'joined' packet (see wirePeerDataChannel) - a freely-chosen
+      // display name applies immediately; a claimed TagPro identity only
+      // takes effect once verifyTagproToken confirms it (async - if the
+      // player's already spawned by the time it resolves, poke their live
+      // player object directly so the roster's green name isn't stuck
+      // waiting for their next team change to show it).
+      case 'identify': {
+        if (typeof packet.name === 'string' && packet.name.trim()) {
+          accountRec.display_name = packet.name.trim().slice(0, 20);
+        }
+        if (packet.tagpro && packet.tagpro.token) {
+          verifyTagproToken(packet.tagpro).then(function (valid) {
+            if (!valid) return;
+            accountRec.authed = true;
+            accountRec.display_name = packet.tagpro.reservedName;
+            var p = gi.gameState.getPlayer(clientId);
+            if (p) { p.authed = true; gi.emitter.emit('update', p); }
+          });
+        }
+        return;
+      }
       default: return;
     }
   }
@@ -403,9 +510,19 @@ var webrtcTransport = (function () {
     simulatedLatency: function () { return 0; },
   };
 
-  async function bootAsHost(code) {
+  async function bootAsHost(code, password, identity) {
     roomCode = code; // already set + 'roomCode:ready' emitted by requestRoomCode() (see createGroup below)
-    await connectSignal(code, 'host');
+    // Set directly rather than through the 'identify' round trip peers use
+    // (handleOutgoingFor) - there's no network hop for the host's own
+    // identity, but a claimed TagPro token still goes through the same
+    // verifyTagproToken check a peer's would, rather than trusting
+    // localStorage unconditionally.
+    if (identity && identity.name) hostAccount.display_name = identity.name;
+    if (identity && identity.tagpro && identity.tagpro.token) {
+      var valid = await verifyTagproToken(identity.tagpro);
+      if (valid) { hostAccount.authed = true; hostAccount.display_name = identity.tagpro.reservedName; }
+    }
+    await connectSignal(code, 'host', password, hostAccount.display_name);
     globalThis.socket = hostSocket;
 
     var res    = await fetch('./assets/maps/default.json');
@@ -444,7 +561,7 @@ var webrtcTransport = (function () {
     simulatedLatency: function () { return 0; },
   };
 
-  function wirePeerDataChannel(dc, onJoined) {
+  function wirePeerDataChannel(dc, onJoined, identity) {
     hostDc = dc;
     dc.addEventListener('message', function (event) {
       var packet = JSON.parse(event.data);
@@ -455,6 +572,12 @@ var webrtcTransport = (function () {
         joinedApplied = true;
         packetApplier.applyJoined(packet);
         appEvents.emit('roomCode:ready', roomCode); // already known from the join-by-code UI, but keeps Teams tab consistent
+        // This peer's one-time self-introduction, now that the channel is
+        // definitely open (we just received the host's first message on
+        // it) - see handleOutgoingFor's 'identify' case, host side.
+        if (identity && (identity.name || identity.tagpro)) {
+          dc.send(JSON.stringify({ type: 'identify', name: identity.name, tagpro: identity.tagpro }));
+        }
         onJoined();
         return;
       }
@@ -462,11 +585,11 @@ var webrtcTransport = (function () {
     });
   }
 
-  async function bootAsPeer(code) {
+  async function bootAsPeer(code, password, identity) {
     roomCode = code;
     globalThis.socket = peerSocket;
 
-    var welcome = await connectSignal(code, 'peer');
+    var welcome = await connectSignal(code, 'peer', password);
     // Known limitation: if a peer connects before anyone has ever claimed
     // the host role for this room code, this gives up immediately rather
     // than waiting/retrying for a host to show up later. Fine in practice
@@ -490,7 +613,7 @@ var webrtcTransport = (function () {
     return new Promise(function (resolve, reject) {
       var timeout = setTimeout(function () { reject(new Error('timed out connecting to host')); }, 20000);
       hostPc.addEventListener('datachannel', function (event) {
-        wirePeerDataChannel(event.channel, function () { clearTimeout(timeout); resolve(null); });
+        wirePeerDataChannel(event.channel, function () { clearTimeout(timeout); resolve(null); }, identity);
       });
     });
   }
@@ -513,10 +636,10 @@ var webrtcTransport = (function () {
   }
 
   return {
-    createGroup: function () {
-      return requestRoomCode().then(function (code) { return bootAsHost(code); });
+    createGroup: function (password, identity) {
+      return requestRoomCode().then(function (code) { return bootAsHost(code, password, identity); });
     },
-    joinGroup: function (code) { return bootAsPeer(code.toUpperCase()); },
+    joinGroup: function (code, password, identity) { return bootAsPeer(code.toUpperCase(), password, identity); },
     role: function () { return role; },
     localId: LOCAL_CLIENT_ID,
     getRoomCode: function () { return roomCode; },
@@ -525,5 +648,9 @@ var webrtcTransport = (function () {
     switchMap: switchMap,
     workerUrl: WORKER_URL,
     peerCount: function () { return Object.keys(peers).filter(function (id) { return peers[id].ready; }).length; },
+    kickPeer: kickClient,
+    banPeer: banClient,
+    setMuted: setMuted,
+    isMuted: isMuted,
   };
 })();

@@ -37,10 +37,48 @@ function switchMenuTab(tabId) {
   }
 }
 
+// Kick/Mute/Ban are room-owner (=host) tools - activeTransport.role() is
+// null for solo play and 'peer' for anyone who joined someone else's room,
+// so this naturally renders nothing for either of those, no separate check
+// needed beyond the isMe skip (a host can't kick/mute/ban themselves).
 function buildPlayerRow(p, isMe) {
   var row = document.createElement('div');
   row.className = 'playerRow';
-  row.textContent = (p.name || 'Player ' + p.id) + (isMe ? ' (you)' : '');
+
+  var nameSpan = document.createElement('span');
+  nameSpan.textContent = (p.name || 'Player ' + p.id) + (isMe ? ' (you)' : '');
+  // Green = host-verified TagPro login (see local/tagproLogin.js and
+  // webrtcTransport.js's 'identify' handling) - a trust signal that this
+  // really is that TagPro account, not just a self-chosen name.
+  if (p.authed) nameSpan.style.color = '#4caf50';
+  row.appendChild(nameSpan);
+
+  if (!isMe && typeof activeTransport !== 'undefined' && activeTransport && activeTransport.role && activeTransport.role() === 'host') {
+    var muteBtn = document.createElement('button');
+    muteBtn.className = 'menuBtn';
+    muteBtn.style.cssText = 'padding:2px 8px;margin-left:8px;font-size:11px;';
+    muteBtn.textContent = activeTransport.isMuted(p.id) ? 'Unmute' : 'Mute';
+    muteBtn.addEventListener('click', function () {
+      activeTransport.setMuted(p.id, !activeTransport.isMuted(p.id));
+      renderTeams();
+    });
+    row.appendChild(muteBtn);
+
+    var kickBtn = document.createElement('button');
+    kickBtn.className = 'menuBtn';
+    kickBtn.style.cssText = 'padding:2px 8px;margin-left:4px;font-size:11px;background:#a33;';
+    kickBtn.textContent = 'Kick';
+    kickBtn.addEventListener('click', function () { activeTransport.kickPeer(p.id); });
+    row.appendChild(kickBtn);
+
+    var banBtn = document.createElement('button');
+    banBtn.className = 'menuBtn';
+    banBtn.style.cssText = 'padding:2px 8px;margin-left:4px;font-size:11px;background:#700;';
+    banBtn.textContent = 'Ban';
+    banBtn.addEventListener('click', function () { activeTransport.banPeer(p.id); });
+    row.appendChild(banBtn);
+  }
+
   return row;
 }
 
@@ -88,8 +126,41 @@ function initMenu() {
   appEvents.on('team:changed', renderTeams);
   renderTeams();
 
-  appEvents.on('roomCode:ready', function (code) {
+  function showRoomCode(code) {
     var el = document.getElementById('roomCodeText');
     if (el) el.textContent = code || 'unavailable';
-  });
+
+    var copyBtn = document.getElementById('copyRoomLinkBtn');
+    if (!copyBtn) return;
+    if (!code) { copyBtn.style.display = 'none'; return; }
+    copyBtn.style.display = '';
+    copyBtn.onclick = function () {
+      // Always "/", not location.pathname - this page IS index.html but is
+      // never meant to be linked as /index.html (GitHub Pages serves it at
+      // "/" directly, matching the clean-URL pattern already used for
+      // /replays - see replays.html's own cross-links).
+      var link = location.origin + '/?room=' + code;
+      navigator.clipboard.writeText(link).then(function () {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(function () { copyBtn.textContent = 'Copy link'; }, 1500);
+      }).catch(function () {});
+    };
+  }
+
+  // 'roomCode:ready' fires as soon as the code is minted, which for the
+  // host happens INSIDE webrtcTransport.createGroup()'s promise chain -
+  // well before main.js's beginBoot() ever calls start() (and therefore
+  // this initMenu()). appEvents has no memory of past emits, so a listener
+  // registered this late would silently miss an event that already fired,
+  // leaving roomCodeText stuck on its placeholder forever even though the
+  // room was created successfully. Read whatever activeTransport already
+  // has synchronously (both createGroup and joinGroup set their internal
+  // roomCode before this ever runs) so we're never dependent on winning
+  // that race, then keep the listener too - solo mode has no
+  // activeTransport.getRoomCode() yet at this point, and it's cheap
+  // insurance either way.
+  if (typeof activeTransport !== 'undefined' && activeTransport && activeTransport.getRoomCode) {
+    showRoomCode(activeTransport.getRoomCode());
+  }
+  appEvents.on('roomCode:ready', showRoomCode);
 }

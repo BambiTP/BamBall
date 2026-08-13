@@ -303,6 +303,17 @@ var packetApplier = {
     appEvents.emit('chat:message', packet.name, packet.text);
   },
 
+  // Gets back to a clean mode-select screen once the connection this
+  // packet arrived on is about to close (the host closes it right after
+  // sending this, see webrtcTransport.js's kickClient) - same "return to
+  // fresh start" the Leave Group button already uses (local/joinUI.js).
+  // Nothing survives a reload on its own, so the reason rides along in
+  // sessionStorage for main.js's mode-select screen to pick up and show.
+  kicked: function (packet) {
+    try { sessionStorage.setItem('bambipro_kicked_reason', packet.message || 'You were removed from the room.'); } catch (err) {}
+    location.reload();
+  },
+
   // Reply to actions.ping() (see net/packetSchema.js) - packet.t is this
   // client's own clock, so the round trip time is just "now minus that".
   pong: function (packet) {

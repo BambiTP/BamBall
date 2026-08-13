@@ -15,6 +15,28 @@ function initSettingsMaker() {
   var matchRows  = document.getElementById('makerMatchRows');
   var nameInput  = document.getElementById('makerFileName');
   var status     = document.getElementById('makerStatus');
+  var loadSelect = document.getElementById('makerLoadSelect');
+
+  // Save-to-server (below) was write-only until now - nothing in this tab
+  // ever read a name back, so a saved file was only reachable by typing
+  // its exact name into a browser tab against the raw GET /settings/:name
+  // route. This populates a pick list of every name that's ever been
+  // saved, refreshed each time the tab is opened.
+  function refreshLoadList() {
+    fetch(activeTransport.workerUrl + '/api/settings').then(function (res) { return res.json(); })
+      .then(function (data) {
+        loadSelect.innerHTML = '<option value="">Load from server…</option>';
+        (data.settings || []).forEach(function (s) {
+          var opt = document.createElement('option');
+          opt.value = s.name;
+          opt.textContent = s.name;
+          loadSelect.appendChild(opt);
+        });
+      }).catch(function () {
+        loadSelect.innerHTML = '<option value="">Failed to load list</option>';
+      });
+  }
+  refreshLoadList();
 
   fetch('./assets/maps/manifest.json').then(function (res) { return res.json(); }).then(function (maps) {
     maps.forEach(function (m) {
@@ -77,7 +99,31 @@ function initSettingsMaker() {
       .then(function (result) {
         if (!result.ok) { status.textContent = 'Failed: ' + (result.data.error || 'unknown error'); return; }
         status.textContent = 'Saved at ' + activeTransport.workerUrl + result.data.url;
+        refreshLoadList();
       })
       .catch(function () { status.textContent = 'Failed to reach the server.'; });
+  });
+
+  // Rebuilds both forms straight from the loaded file, same
+  // buildSettingsPanel(rowsEl, scope, values, subTabsEl) machinery buildForms()
+  // uses above - values merges the schema's real defaults with whatever the
+  // file overrides, so any key the file doesn't mention still shows its
+  // normal default rather than going blank.
+  loadSelect.addEventListener('change', function () {
+    var name = loadSelect.value;
+    if (!name) return;
+    nameInput.value = name;
+    status.textContent = 'Loading…';
+    fetch(activeTransport.workerUrl + '/settings/' + encodeURIComponent(name))
+      .then(function (res) { if (!res.ok) throw new Error('not found'); return res.json(); })
+      .then(function (parsed) {
+        if (parsed.mapFile) mapSelect.value = parsed.mapFile;
+        if (settingsState.physicsDefaults) {
+          buildSettingsPanel(physRows, 'physics', Object.assign({}, settingsState.physicsDefaults, parsed.physics || {}), physTabs);
+        }
+        buildSettingsPanel(matchRows, 'match', Object.assign({}, MatchSettings.DEFAULT_SETTINGS, parsed.match || {}));
+        status.textContent = 'Loaded ' + name;
+      })
+      .catch(function (err) { status.textContent = 'Failed to load: ' + err.message; });
   });
 }

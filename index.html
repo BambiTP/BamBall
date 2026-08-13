@@ -12,6 +12,21 @@
   #hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); color: #aaa; font-size: 12px; }
   .hidden { display: none !important; }
 
+  /* ---- chat: a small overlay, not inside the Esc menu, so it stays usable
+     mid-match. #menu sits at z-index 100 with an opaque-ish background
+     covering the whole screen, so this only needs to sit above the game
+     viewport, not worry about the menu separately. */
+  #chatBox { position: absolute; bottom: 8px; left: 8px; width: 280px; z-index: 40; }
+  #chatLog { max-height: 130px; overflow-y: auto; font-size: 12px; color: #eee; display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6); }
+  .chatRow { word-break: break-word; }
+  .chatRow .chatName { color: #7ab8ff; font-weight: bold; margin-right: 4px; }
+  /* Stays invisible (no fill/border) until focused, so it doesn't look like
+     a UI bar sitting over the game when the player isn't typing. */
+  #chatInput { width: 100%; box-sizing: border-box; padding: 5px 6px; background: transparent; color: #eee; border: 1px solid transparent; border-radius: 3px; font-size: 12px; transition: background 0.15s, border-color 0.15s; }
+  #chatInput::placeholder { color: transparent; }
+  #chatInput:focus { background: rgba(0,0,0,0.35); border-color: rgba(255,255,255,0.25); }
+  #chatInput:focus::placeholder { color: rgba(255,255,255,0.55); }
+
   /* ---- join controls: live inside the Esc menu's Teams tab, not floating
      over the game (see #joinControls under "teams tab" below for layout -
      these are just the button colors, shared regardless of where they sit). */
@@ -44,7 +59,36 @@
   #joinGroupRow { display: flex; gap: 8px; align-items: center; }
   #joinGroupRow input { font-size: 16px; padding: 11px 14px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; width: 130px; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
   #joinGroupRow button { width: auto; background: #3355cc; }
+  #createGroupPassword { font-size: 14px; padding: 8px 10px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; width: 220px; box-sizing: border-box; text-align: center; }
   #modeSelectStatus { font-size: 13px; color: #e07a7a; min-height: 16px; }
+
+  /* ---- identity: display name + optional TagPro login, shown above the
+     mode buttons - see local/tagproLogin.js. A logged-in name is locked
+     (disabled input, green text) since it's a trust signal, not just a
+     label. ---- */
+  #identityRow { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+  #displayNameInput { font-size: 14px; padding: 8px 10px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; width: 150px; box-sizing: border-box; }
+  #displayNameInput:disabled { opacity: 1; } /* stays legible (green text) while locked, not greyed out like a normal disabled field */
+  #tagproLoginBtn { width: auto; font-size: 13px; padding: 8px 14px; background: #5588ff; }
+
+  /* ---- homepage open-rooms list: a real table, not stacked cards -
+     styled after HaxBall's own room browser (dense rows, muted uppercase
+     column headers, a lock glyph column of its own, hover-highlight to
+     click-to-join). Always visible, not behind a button - see local/
+     main.js's refreshRoomList(). ---- */
+  .roomListLabel { font-size: 12px; text-transform: uppercase; color: #777; letter-spacing: 0.5px; margin-top: 4px; }
+  #roomList { width: 420px; max-height: 220px; overflow-y: auto; margin-top: 4px; border: 1px solid #2a2a2a; border-radius: 6px; background: #161616; }
+  #roomTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #roomTable thead th { position: sticky; top: 0; background: #1c1c1c; color: #777; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: normal; text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2a2a; }
+  #roomTable th.roomLockCol, #roomTable td.roomLockCol { width: 20px; text-align: center; padding-left: 8px; padding-right: 0; }
+  #roomTable th.roomPlayersCol, #roomTable td.roomPlayersCol { text-align: right; padding-right: 12px; }
+  #roomTable tbody tr { cursor: pointer; border-bottom: 1px solid #232323; }
+  #roomTable tbody tr:hover { background: #202840; }
+  #roomTable td { padding: 7px 10px; color: #ddd; }
+  #roomTable td.roomCodeCol { font-family: monospace; letter-spacing: 1px; }
+  #roomTable td.roomHostCol { color: #999; }
+  .roomListEmptyRow td { font-size: 12px; color: #666; text-align: center; padding: 14px; cursor: default; }
+  .roomListEmptyRow:hover { background: none !important; }
 
   /* ---- ESC menu ---- */
   #menu { position: absolute; inset: 0; background: rgba(10,10,12,0.92); color: #eee; display: flex; flex-direction: column; z-index: 100; }
@@ -86,13 +130,28 @@
 <body>
 <div id="modeSelect">
   <h1>Play a match</h1>
+  <div id="identityRow">
+    <input id="displayNameInput" placeholder="Your name" maxlength="20" autocomplete="off">
+    <button id="tagproLoginBtn">Log in with TagPro</button>
+  </div>
   <button id="playSoloBtn">Play Solo</button>
   <button id="createGroupBtn">Create Group</button>
+  <input id="createGroupPassword" type="password" placeholder="Room password (optional)" autocomplete="off">
   <div id="joinGroupRow">
     <input id="joinGroupCode" placeholder="CODE" maxlength="6">
+    <input id="joinGroupPassword" type="password" placeholder="Password" autocomplete="off">
     <button id="joinGroupBtn">Join Group</button>
   </div>
   <div id="modeSelectStatus"></div>
+  <div class="roomListLabel">Open Rooms</div>
+  <div id="roomList">
+    <table id="roomTable">
+      <thead>
+        <tr><th class="roomLockCol"></th><th>Room</th><th>Host</th><th class="roomPlayersCol">Players</th></tr>
+      </thead>
+      <tbody id="roomListRows"><tr class="roomListEmptyRow"><td colspan="4">Loading…</td></tr></tbody>
+    </table>
+  </div>
 </div>
 <div id="loadingOverlay" class="hidden"><div id="loadingSpinner"></div><div id="loadingText">Loading BambiPro…</div></div>
 <div id="viewport"></div>
@@ -101,6 +160,10 @@
   <div id="hudTimer">-:--</div>
 </div>
 <div id="hint">Esc for menu</div>
+<div id="chatBox">
+  <div id="chatLog"></div>
+  <input id="chatInput" type="text" placeholder="Press Enter to chat" maxlength="240" autocomplete="off">
+</div>
 
 <div id="menu" class="hidden">
   <div id="menuCloseHint">Esc to close</div>
@@ -128,7 +191,7 @@
         <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
         <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
       </div>
-      <div class="roomCodeLine">Room: <code id="roomCodeText">connecting…</code> - replay saves here when the match ends. <a href="/replays" style="color:#7aa2ff">Browse all replays</a></div>
+      <div class="roomCodeLine">Room: <code id="roomCodeText">connecting…</code> <button class="menuBtn" id="copyRoomLinkBtn" style="display:none;padding:2px 8px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="/replays" style="color:#7aa2ff">Browse all replays</a></div>
     </div>
 
     <div id="texturesPanel" class="menuPanel hidden">
@@ -148,6 +211,10 @@
       <div class="makerRow">
         <h4>Match</h4>
         <div id="makerMatchRows"></div>
+      </div>
+      <div class="makerRow">
+        <label for="makerLoadSelect">Load a saved file</label>
+        <select id="makerLoadSelect"><option value="">Load from server…</option></select>
       </div>
       <div class="makerRow">
         <label for="makerFileName">Save as (name for the shareable link)</label>
@@ -249,6 +316,7 @@
 <script src="client/ui/schemaForm.js" defer></script>
 <script src="client/ui/textureBrowser.js" defer></script>
 
+<script src="local/tagproAuthLib.js" defer></script>
 <script src="local/localTexturePrefs.js" defer></script>
 <script src="shared/texturePackPicker.js" defer></script>
 <script src="local/localReplayRecorder.js" defer></script>
@@ -259,6 +327,7 @@
 <script src="local/menu.js" defer></script>
 <script src="local/settingsFiles.js" defer></script>
 <script src="local/settingsMaker.js" defer></script>
+<script src="local/tagproLogin.js" defer></script>
 <script src="local/main.js" defer></script>
 </body>
 </html>

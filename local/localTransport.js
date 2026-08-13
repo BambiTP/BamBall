@@ -245,9 +245,19 @@ var localTransport = (function () {
         if (affected) gi.emitter.emit('update', affected);
         return;
       }
+      case 'chat': {
+        // Meaningless with one player, but shouldn't dead-end either - same
+        // round-trip-through-the-log every other transport gives it.
+        var text = typeof packet.text === 'string' ? packet.text.trim().slice(0, 240) : '';
+        if (!text) return;
+        var chatPacket = packetBuilders.chat({ id: localId, name: account.display_name, text: text });
+        packetRouter.dispatch(chatPacket);
+        recorder.recordBroadcast(chatPacket);
+        return;
+      }
       default:
-        // Everything else (settings/leader/editor/chat packets) has no
-        // handler in this build - the UI that would send them was dropped.
+        // Everything else (settings/leader/editor packets) has no handler
+        // in this build - the UI that would send them was dropped.
         return;
     }
   }

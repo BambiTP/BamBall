@@ -89,7 +89,7 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
       emitter.emit('update', player);
     },
 
-    spawnPlayer(id, team, name) {
+    spawnPlayer(id, team, name, authed) {
       const teamStr = (team === 2 || team === 'blue') ? 'blue' : 'red';
       const spawns  = gameState.spawnPool[teamStr];
       if (!spawns?.length) { console.error(`spawnPool not ready for "${teamStr}"`); return null; }
@@ -100,6 +100,7 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
       const player = {
         id,
         name: name ?? `Player ${id}`,
+        authed: !!authed,
         team: teamStr,
         body,
         isPlayer: true,

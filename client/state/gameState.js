@@ -74,6 +74,7 @@ function createPlayer(entity) {
   var player = {
     id:   entity.id,
     name: entity.n || ('Player ' + entity.id),
+    authed: !!entity.au, // true only once the host has verified their TagPro login token - see webrtcTransport.js's handleOutgoingFor 'identify' case
     team: teamFromCode(entity.t),
 
     x: entity.x, y: entity.y,
@@ -126,6 +127,7 @@ function removePlayerLocal(id) {
 // update to an existing one (applyEntity below).
 function applyEntityFlags(player, entity) {
   if (entity.n !== undefined) player.name = entity.n;
+  if (entity.au !== undefined) player.authed = !!entity.au;
   if (entity.t !== undefined) player.team = teamFromCode(entity.t);
   if (entity.ac !== undefined) player.accel = entity.ac;
   if (entity.ms !== undefined) player.maxSpeed = entity.ms;

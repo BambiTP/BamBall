@@ -1,21 +1,27 @@
 // api.bambipro.workers.dev - the one piece of always-on infrastructure this project
-// uses. Deliberately small: room codes, permanent replay storage, and
-// WebRTC signaling (roomSignal.js) today; the TagPro-login verification
-// endpoint (designed, not yet built) will live here too. None of these
-// carry game state through the Worker - once two peers' data channel is
-// open (see roomSignal.js's header comment), gameplay traffic goes
-// directly between them.
+// uses. Deliberately small: room codes, permanent replay storage, WebRTC
+// signaling (roomSignal.js), the open-rooms directory (roomDirectory.js),
+// and TagPro flair-login verification (tagproAuth.js). None of these carry
+// game state through the Worker - once two peers' data channel is open
+// (see roomSignal.js's header comment), gameplay traffic goes directly
+// between them.
 //
 // Routes:
 //   POST /api/rooms                 -> { code } - mints a fresh, unique room code
+//   GET  /api/rooms                 -> { rooms } - every currently-open room (roomDirectory.js),
+//                                       for the homepage's live join-with-one-click list
 //   GET  /api/replays               -> paginated list of every stored replay's summary
 //   PUT  /api/replays/:code         -> stores a finished match's replay in R2, forever
 //   GET  /replays/:code             -> serves it back, byte for byte
 //   PUT  /api/settings/:name        -> stores a settings-maker file (overwritable - unlike
 //                                       replays, a named preset is meant to be iterated on)
+//   GET  /api/settings              -> lists every stored settings file's name
 //   GET  /settings/:name            -> serves it back
 //   GET  /api/signal/:code          -> WebSocket upgrade, relayed to that room's RoomSignal
 //                                       Durable Object (roomSignal.js) for WebRTC signaling
+//   POST /api/tagpro/login/start    -> begins "login with your real TagPro flair" (tagproAuth.js)
+//   POST /api/tagpro/login/check    -> polled by the client until the flair sequence completes
+//   POST /api/tagpro/verify         -> a host checks a joining peer's claimed identity token
 //   GET  /api/fortunatemaps/:id/png  -> proxies fortunatemaps.herokuapp.com's map PNG
 //   GET  /api/fortunatemaps/:id/json -> proxies its JSON sidecar (wiring/spawn data)
 //     Browsers can't fetch() a third-party site directly unless THAT site
@@ -24,7 +30,10 @@
 //     so this just relays the bytes with our own CORS headers attached.
 
 import { RoomSignal } from './roomSignal.js';
-export { RoomSignal };
+import { RoomDirectory } from './roomDirectory.js';
+import { json, corsHeaders } from './http.js';
+import { handleLoginStart, handleLoginCheck, handleVerifyToken } from './tagproAuth.js';
+export { RoomSignal, RoomDirectory };
 
 const ROOM_CODE_ALPHABET  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I - avoids look-alikes when read aloud or typed by hand
 // 32^6 = ~1.07 billion possible codes - plenty for a hobby project, even
@@ -32,23 +41,9 @@ const ROOM_CODE_ALPHABET  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I - 
 // kept forever). Confirmed fine as-is after checking the actual math.
 const ROOM_CODE_LENGTH    = 6;
 const REPLAY_KEY_PREFIX   = 'replays/';
+const ISSUED_KEY_PREFIX   = 'issued/'; // marks a code as actually minted by handleCreateRoom - see handleUploadReplay
 const SETTINGS_KEY_PREFIX = 'settings/';
 const FORTUNATE_BASE      = 'https://fortunatemaps.herokuapp.com';
-
-function corsHeaders() {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Content-Encoding, X-Replay-Gzip',
-  };
-}
-
-function json(data, status) {
-  return new Response(JSON.stringify(data), {
-    status: status || 200,
-    headers: Object.assign({ 'Content-Type': 'application/json' }, corsHeaders()),
-  });
-}
 
 function randomRoomCode() {
   var out = '';
@@ -68,6 +63,31 @@ function isValidRoomCode(code) {
 // it goes straight into an R2 key and a URL path.
 function isValidSettingsName(name) {
   return typeof name === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(name);
+}
+
+// A replay's summary rides in on the client-set X-Replay-Meta header -
+// attacker-suppliable content, not anything the server itself computed -
+// and gets stored forever, then served back verbatim to every visitor of
+// the public /replays page (replays.html). Constrained to a known-safe
+// shape before storage: caps string lengths, restricts `winner` to an
+// actual enum, and - critically - has no `code`/`uploadedAt` keys in its
+// output no matter what the input contains, so handleListReplays' later
+// `Object.assign({code, uploadedAt}, summary)` can never have those
+// server-computed fields overwritten by forged metadata.
+var REPLAY_WINNERS = ['red', 'blue', 'tie'];
+function sanitizeReplayMeta(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  var meta = {};
+  if (typeof raw.mapName === 'string') meta.mapName = raw.mapName.slice(0, 80);
+  if (typeof raw.mapId === 'string' || typeof raw.mapId === 'number') meta.mapId = String(raw.mapId).slice(0, 40);
+  if (typeof raw.reason === 'string') meta.reason = raw.reason.slice(0, 40);
+  if (REPLAY_WINNERS.indexOf(raw.winner) !== -1) meta.winner = raw.winner;
+  if (raw.scores && typeof raw.scores === 'object') {
+    var red  = Number(raw.scores.red);
+    var blue = Number(raw.scores.blue);
+    if (Number.isFinite(red) && Number.isFinite(blue)) meta.scores = { red: red, blue: blue };
+  }
+  return meta;
 }
 
 async function handleUploadSettings(request, env, name) {
@@ -94,6 +114,28 @@ async function handleGetSettings(env, name) {
   return new Response(object.body, { headers: headers });
 }
 
+// Every stored settings file's name, newest first - lets the Settings
+// Maker tab actually browse/load what's already been saved, instead of
+// requiring the exact name to be remembered and typed back in by hand.
+async function handleListSettings(env) {
+  var page = await env.REPLAYS.list({ prefix: SETTINGS_KEY_PREFIX, limit: 1000 });
+  var items = page.objects.map(function (obj) {
+    return { name: obj.key.slice(SETTINGS_KEY_PREFIX.length).replace(/\.json$/, ''), uploadedAt: obj.uploaded };
+  });
+  items.sort(function (a, b) { return new Date(b.uploadedAt) - new Date(a.uploadedAt); });
+  return json({ settings: items });
+}
+
+function roomDirectoryStub(env) {
+  return env.ROOM_DIRECTORY.get(env.ROOM_DIRECTORY.idFromName('global'));
+}
+
+async function handleListRooms(env) {
+  var res = await roomDirectoryStub(env).fetch('https://internal/list');
+  var data = await res.json();
+  return json(data); // re-wrapped through the shared helper so this response carries CORS headers too - the DO's own is never hit directly by a browser, so it doesn't bother
+}
+
 async function handleCreateRoom(env) {
   // Retries on the (extremely unlikely, ~33^6 possibilities) chance of a
   // collision with an existing replay key - R2 has no atomic
@@ -103,14 +145,30 @@ async function handleCreateRoom(env) {
   for (var attempt = 0; attempt < 5; attempt++) {
     var code = randomRoomCode();
     var existing = await env.REPLAYS.head(REPLAY_KEY_PREFIX + code + '.ndjson.gz')
-      || await env.REPLAYS.head(REPLAY_KEY_PREFIX + code + '.ndjson');
-    if (!existing) return json({ code: code });
+      || await env.REPLAYS.head(REPLAY_KEY_PREFIX + code + '.ndjson')
+      || await env.REPLAYS.head(ISSUED_KEY_PREFIX + code);
+    if (!existing) {
+      // Marks this code as legitimately ours before handing it out, so
+      // handleUploadReplay (below) can refuse an upload for a code nobody
+      // actually requested. Without this, the public GET /api/rooms
+      // listing (which shows a real match's code while it's still in
+      // progress, see roomDirectory.js) combined with this route having
+      // no upload auth at all would let anyone squat any code - real or
+      // entirely invented - to either block a real match's replay from
+      // ever saving (a squatted code makes the real upload 409 later) or
+      // just pollute the permanent public archive with fabricated matches.
+      await env.REPLAYS.put(ISSUED_KEY_PREFIX + code, '');
+      return json({ code: code });
+    }
   }
   return json({ error: 'could not allocate a room code, try again' }, 503);
 }
 
 async function handleUploadReplay(request, env, code) {
   if (!isValidRoomCode(code)) return json({ error: 'invalid room code' }, 400);
+
+  var issued = await env.REPLAYS.head(ISSUED_KEY_PREFIX + code);
+  if (!issued) return json({ error: 'unknown room code - create one via POST /api/rooms first' }, 403);
 
   // The upload is already gzip'd bytes (localReplayRecorder.js's
   // CompressionStream output) or plain NDJSON text if the browser has no
@@ -142,7 +200,7 @@ async function handleUploadReplay(request, env, code) {
   // listing+client-side sorting stops being fast enough.
   var metaHeader = request.headers.get('X-Replay-Meta');
   var meta = {};
-  if (metaHeader) { try { meta = JSON.parse(metaHeader); } catch (e) {} }
+  if (metaHeader) { try { meta = sanitizeReplayMeta(JSON.parse(metaHeader)); } catch (e) {} }
 
   await env.REPLAYS.put(key, body, {
     httpMetadata: {
@@ -198,6 +256,22 @@ export default {
       return handleCreateRoom(env);
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/rooms') {
+      return handleListRooms(env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/tagpro/login/start') {
+      return handleLoginStart(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/tagpro/login/check') {
+      return handleLoginCheck(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/tagpro/verify') {
+      return handleVerifyToken(request, env);
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/replays') {
       return handleListReplays(env, url.searchParams.get('cursor'));
     }
@@ -222,6 +296,10 @@ export default {
       var doId = env.ROOM_SIGNAL.idFromName(signalMatch[1].toUpperCase());
       var stub = env.ROOM_SIGNAL.get(doId);
       return stub.fetch(request);
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/settings') {
+      return handleListSettings(env);
     }
 
     var settingsUpload = url.pathname.match(/^\/api\/settings\/([A-Za-z0-9_-]+)$/);

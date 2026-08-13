@@ -36,8 +36,31 @@ function updateHudScore(scores) {
   if (el) el.textContent = 'Red ' + scores.red + ' - ' + scores.blue + ' Blue';
 }
 
+var CHAT_LOG_MAX_ROWS = 50; // trims oldest rows so a long match's chat can't grow the DOM forever
+
+function appendChatMessage(name, text) {
+  var log = document.getElementById('chatLog');
+  if (!log) return;
+
+  var row = document.createElement('div');
+  row.className = 'chatRow';
+
+  if (name) {
+    var nameEl = document.createElement('span');
+    nameEl.className = 'chatName';
+    nameEl.textContent = name + ':';
+    row.appendChild(nameEl);
+  }
+  row.appendChild(document.createTextNode(text));
+
+  log.appendChild(row);
+  while (log.children.length > CHAT_LOG_MAX_ROWS) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+
 function initHud() {
   appEvents.on('score:changed', updateHudScore);
+  appEvents.on('chat:message', appendChatMessage);
   settingsEvents.on('matchInfo:changed', function () {
     updateHudScore(settingsState.matchInfo.scores || { red: 0, blue: 0 });
     renderHudTimer();

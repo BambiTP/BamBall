@@ -64,9 +64,41 @@ function sendInput() {
   }
 }
 
+// Enter/Escape on #chatInput itself, not the global keydown handler above -
+// blockedByTyping() deliberately lets non-arrow keys pass through untouched
+// while chatInput is focused (so typed characters land in the field
+// instead of moving the ball), which means send-on-Enter has to be its own
+// listener here rather than another branch in that handler.
+function initChatInput() {
+  var input = document.getElementById('chatInput');
+  if (!input) return;
+
+  appEvents.on('chat:focus', function () { input.focus(); });
+
+  input.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+      var text = input.value.trim();
+      input.value = '';
+      input.blur();
+      if (text) actions.chat(text);
+      return;
+    }
+    if (event.key === 'Escape') {
+      // Without this, the global keydown handler below (which checks the
+      // menu keybind unconditionally, with no typingInField() gate) would
+      // also see this same Escape and pop the pause menu open right behind
+      // it - not what "cancel this chat message" should do.
+      event.stopPropagation();
+      input.value = '';
+      input.blur();
+    }
+  });
+}
+
 function initKeyboardInput() {
   rebuildKeyLookup();
   localSettingsEvents.on('localSettings:changed', rebuildKeyLookup);
+  initChatInput();
 
   window.addEventListener('keydown', function (event) {
     if (isActionKey(event.key, 'menu')) {
