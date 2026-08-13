@@ -135,11 +135,12 @@ function initMenu() {
     if (!code) { copyBtn.style.display = 'none'; return; }
     copyBtn.style.display = '';
     copyBtn.onclick = function () {
-      // Always "/", not location.pathname - this page IS index.html but is
-      // never meant to be linked as /index.html (GitHub Pages serves it at
-      // "/" directly, matching the clean-URL pattern already used for
-      // /replays - see replays.html's own cross-links).
-      var link = location.origin + '/?room=' + code;
+      // Resolved against location.href (not a hardcoded absolute "/")
+      // so this keeps working whether the site's hosted at a domain root
+      // (Cloudflare Pages) or nested under a subpath, e.g. a GitHub Pages
+      // project page serves this repo at /<repo-name>/, not "/" - a
+      // hardcoded "/" would silently link outside the actual site there.
+      var link = new URL('?room=' + code, location.href).href;
       navigator.clipboard.writeText(link).then(function () {
         copyBtn.textContent = 'Copied!';
         setTimeout(function () { copyBtn.textContent = 'Copy link'; }, 1500);

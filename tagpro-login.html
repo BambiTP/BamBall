@@ -67,7 +67,7 @@
     <button id="continueBtn">Continue</button>
   </div>
 
-  <a id="backLink" class="backLink" href="/">← Back to game</a>
+  <a id="backLink" class="backLink" href="index.html">← Back to game</a>
 </div>
 
 <!-- The portable drop-in library (see its own header comment) - the rest
@@ -92,12 +92,18 @@ var SERVER_URL = new URLSearchParams(location.search).get('server') || 'https://
 // parser here guarantees this check sees exactly what location.href
 // assignment below would actually do with it.
 function safeReturnPath(raw) {
-  if (typeof raw !== 'string') return '/';
-  try {
-    var resolved = new URL(raw, location.origin);
-    if (resolved.origin === location.origin) return resolved.pathname + resolved.search + resolved.hash;
-  } catch (e) {}
-  return '/';
+  if (typeof raw === 'string') {
+    try {
+      var resolved = new URL(raw, location.origin);
+      if (resolved.origin === location.origin) return resolved.pathname + resolved.search + resolved.hash;
+    } catch (e) {}
+  }
+  // No valid return param - land on this same directory's index.html, a
+  // sibling of this page. Resolved relative to location.href (not a bare
+  // "/") so this works the same whether the site's hosted at a domain
+  // root (Cloudflare Pages) or nested under a subpath (a GitHub Pages
+  // project page serves this repo at /<repo-name>/, not "/").
+  return new URL('index.html', location.href).pathname;
 }
 
 var returnTo = safeReturnPath(new URLSearchParams(location.search).get('return'));
