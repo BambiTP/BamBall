@@ -36,7 +36,7 @@ const gameConfig = require('../engine/gameConfig.js');
 const { packetBuilders, serializePlayer } = require('../engine/packetBuilders.js');
 const TagproAuth = require('../local/tagproAuthLib.js');
 
-const WORKER_URL = 'https://api.bambipro.workers.dev';
+const WORKER_URL = 'https://api.bamball.workers.dev';
 const SIGNAL_URL = WORKER_URL.replace(/^http/, 'ws') + '/api/signal/';
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -406,7 +406,7 @@ async function boot() {
   log('');
   log('==================================================');
   log(' Room code: ' + roomCode + (args.password ? ' (password protected)' : ''));
-  log(' Join link: https://bambitp.github.io/BambiPro/group/' + roomCode);
+  log(' Join link: https://bambitp.github.io/BamBall/group/' + roomCode);
   log(' Map: ' + gi.gameState.mapName);
   log('==================================================');
   log('');

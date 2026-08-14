@@ -1,6 +1,6 @@
 # node-host
 
-A headless, terminal-controlled P2P host for BambiPro. Runs the exact same
+A headless, terminal-controlled P2P host for BamBall. Runs the exact same
 authoritative simulation the browser host (`local/webrtcTransport.js`) does
 - `engine/` and `shared/` are already written to run under plain
   `require()` in Node (no bundler, no adaptation) - this just drives them
@@ -10,7 +10,7 @@ authoritative simulation the browser host (`local/webrtcTransport.js`) does
 
 No rendering, no DOM, no local player - this process's only job is running
 the match and relaying packets between peers, connecting to the same
-production Worker (`api.bambipro.workers.dev`) any browser host would.
+production Worker (`api.bamball.workers.dev`) any browser host would.
 
 ## Setup
 

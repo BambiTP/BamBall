@@ -131,7 +131,7 @@ function downloadBlob(blob, filename) {
   setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 }
 
-// Stores a finished recording permanently at api.bambipro.workers.dev's
+// Stores a finished recording permanently at api.bamball.workers.dev's
 // /replays/<roomCode> (confirmed requirement: replays live on the server,
 // keyed by the room's own unique code, forever). X-Replay-Gzip tells the
 // Worker whether to hand it back as opaque gzip bytes or plain text - see

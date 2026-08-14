@@ -310,7 +310,7 @@ var packetApplier = {
   // Nothing survives a reload on its own, so the reason rides along in
   // sessionStorage for main.js's mode-select screen to pick up and show.
   kicked: function (packet) {
-    try { sessionStorage.setItem('bambipro_kicked_reason', packet.message || 'You were removed from the room.'); } catch (err) {}
+    try { sessionStorage.setItem('bamball_kicked_reason', packet.message || 'You were removed from the room.'); } catch (err) {}
     location.reload();
   },
 

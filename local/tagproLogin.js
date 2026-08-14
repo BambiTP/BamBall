@@ -5,7 +5,7 @@
 // this file just renders whatever TagproAuth.getIdentity() already says
 // and hands off to that page for anyone who isn't logged in yet.
 
-var DISPLAY_NAME_KEY = 'bambipro_display_name';
+var DISPLAY_NAME_KEY = 'bamball_display_name';
 
 function loadDisplayNamePref() {
   try { return localStorage.getItem(DISPLAY_NAME_KEY) || ''; } catch (err) { return ''; }
@@ -66,7 +66,7 @@ function initIdentityUI() {
     // "/index.html" so this stays correct under any hosting path, not
     // just a domain root - this page is never meant to be linked/
     // returned-to with an explicit index.html, but the directory it's IN
-    // could be "/" (Cloudflare Pages, a domain root) or "/BambiPro/" (a
+    // could be "/" (Cloudflare Pages, a domain root) or "/BamBall/" (a
     // GitHub Pages project page, which serves this repo at
     // /<repo-name>/, not "/") depending on where it's deployed.
     var here = location.pathname.replace(/index\.html$/, '');

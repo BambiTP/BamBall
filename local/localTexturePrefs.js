@@ -5,7 +5,7 @@
 // (binary blobs, localStorage's ~5MB string-only quota is the wrong fit).
 
 var localTexturePrefs = (function () {
-  var PICKS_KEY = 'bambipro.texturePicks'; // { tileId: spriteId }
+  var PICKS_KEY = 'bamball.texturePicks'; // { tileId: spriteId }
 
   function getPicks() {
     try { return JSON.parse(localStorage.getItem(PICKS_KEY)) || {}; }
@@ -30,7 +30,7 @@ var localTexturePrefs = (function () {
 
   // ---- custom uploads (IndexedDB) ----------------------------------------
 
-  var DB_NAME = 'bambipro-textures';
+  var DB_NAME = 'bamball-textures';
   var STORE = 'uploads'; // key: spriteId ("custom-<uuid>"), value: { spriteId, tileName, label, blob }
   var dbPromise = null;
 

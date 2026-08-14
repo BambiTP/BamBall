@@ -1,4 +1,4 @@
-// api.bambipro.workers.dev - the one piece of always-on infrastructure this project
+// api.bamball.workers.dev - the one piece of always-on infrastructure this project
 // uses. Deliberately small: group codes, permanent replay storage, WebRTC
 // signaling (roomSignal.js), the open-groups directory (roomDirectory.js),
 // and TagPro flair-login verification (tagproAuth.js). None of these carry

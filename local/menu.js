@@ -128,7 +128,7 @@ function initMenu() {
 
   // The game's own directory, with any existing /group/<code> suffix or
   // index.html stripped and a guaranteed trailing "/" - e.g. "/"
-  // (Cloudflare Pages, a domain root) or "/BambiPro/" (a GitHub Pages
+  // (Cloudflare Pages, a domain root) or "/BamBall/" (a GitHub Pages
   // project page serves this repo under /<repo-name>/, not "/").
   function baseGamePath() {
     return location.pathname.replace(/\/group\/[A-Za-z0-9]+\/?$/, '/').replace(/[^/]*$/, '');

@@ -2,7 +2,7 @@
 // physics/match settings with the same schema-driven form the original
 // leader panels used (client/game/ui/schemaForm.js, unchanged), then save
 // the result as a { mapFile, physics, match } JSON file - download it, or
-// PUT it to api.bambipro.workers.dev under a name you choose
+// PUT it to api.bamball.workers.dev under a name you choose
 // (WORKER_URL + '/api/settings/<name>', GET'able forever after at
 // WORKER_URL + '/settings/<name>'). The output is upload-slot-compatible:
 // dropping the same file into the Record & Files tab's Pregame/Game

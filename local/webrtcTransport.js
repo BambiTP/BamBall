@@ -31,7 +31,7 @@
 // fail to connect directly. Free public STUN only.
 
 var webrtcTransport = (function () {
-  var WORKER_URL = 'https://api.bambipro.workers.dev';
+  var WORKER_URL = 'https://api.bamball.workers.dev';
   var SIGNAL_URL = WORKER_URL.replace(/^http/, 'ws') + '/api/signal/';
   var ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },

@@ -80,7 +80,7 @@
 // dependency on the game's other scripts. ?server=<url> overrides it for
 // local testing without editing this file. Keep in sync with local/
 // webrtcTransport.js's WORKER_URL if that ever changes.
-var SERVER_URL = new URLSearchParams(location.search).get('server') || 'https://api.bambipro.workers.dev';
+var SERVER_URL = new URLSearchParams(location.search).get('server') || 'https://api.bamball.workers.dev';
 
 // Same-site paths only - otherwise ?return= is just an open redirect for
 // anyone who can get a victim to click a crafted login link. Resolved
@@ -161,13 +161,13 @@ function confirmStep() {
       // tagproAuthLib.js's own usage comment.
       TagproAuth.saveIdentity({ profileId: result.profileId, reservedName: result.reservedName, verifiedAt: result.verifiedAt, token: result.token });
       // Also seeds the homepage's editable display-name field (local/
-      // tagproLogin.js, same 'bambipro_display_name' key, duplicated
+      // tagproLogin.js, same 'bamball_display_name' key, duplicated
       // rather than shared per this page's own standalone-page reasoning
       // above) with the just-verified name - without this, someone who'd
       // already saved some OTHER custom name before ever logging in would
       // land back on the homepage still showing that stale name instead
       // of the identity they just proved ownership of.
-      try { localStorage.setItem('bambipro_display_name', result.reservedName); } catch (e) {}
+      try { localStorage.setItem('bamball_display_name', result.reservedName); } catch (e) {}
       activeProfileId = null;
       activeSession = null;
       document.getElementById('verifiedName').textContent = result.reservedName;

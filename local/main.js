@@ -112,10 +112,10 @@ function initModeSelect() {
   // Carried across the reload packetApplier.js's 'kicked' handler triggers -
   // this is the first code on the mode-select screen to run afterward.
   try {
-    var kickedReason = sessionStorage.getItem('bambipro_kicked_reason');
+    var kickedReason = sessionStorage.getItem('bamball_kicked_reason');
     if (kickedReason) {
       status.textContent = kickedReason;
-      sessionStorage.removeItem('bambipro_kicked_reason');
+      sessionStorage.removeItem('bamball_kicked_reason');
     }
   } catch (err) {}
 
