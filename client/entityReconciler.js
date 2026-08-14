@@ -78,10 +78,15 @@ function reconcilePlayerPosition(player, entity, immediate) {
   }
 
   // Frames to catch up, sized to how long it's actually been since the last
-  // correction (clamped so a long quiet gap - a pause, a slow tick - doesn't
-  // demand an implausibly long ease, and a burst of near-simultaneous
-  // corrections doesn't demand fewer than 1).
-  var frames = Math.max(1, Math.min(30, Math.round(elapsed / STEP_MS)));
+  // correction (a burst of near-simultaneous corrections doesn't demand
+  // fewer than 1). Capped low (~tagpro.js's fixed 6-frame/100ms window,
+  // tagpro.js:15069) rather than letting a routine ~250ms gap stretch the
+  // ease across nearly the whole interval: a short window resolves the
+  // correction quickly and then gets out of the way, so the rest of the gap
+  // is pure physics/input extrapolation instead of a synthetic pull blended
+  // in on every tick - that's what makes tagpro.js's remote-player motion
+  // read as smoother.
+  var frames = Math.max(1, Math.min(6, Math.round(elapsed / STEP_MS)));
   player.sync = {
     frames: frames,
     to:   { x: tx, y: ty, a: ta },
