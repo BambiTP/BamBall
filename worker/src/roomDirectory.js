@@ -37,6 +37,17 @@ export class RoomDirectory {
 
     if (request.method === 'POST' && url.pathname === '/update') {
       var updateBody = await request.json();
+      // playerCount reaching 0 here (rather than a clean /deregister) means
+      // the host's own disconnect never got to fire one - a killed process,
+      // a crashed tab, a network drop mid-teardown - and this was the last
+      // remaining peer's ordinary leave (roomSignal.js's handleClose)
+      // finding out. The room is exactly as gone either way, so treat it
+      // the same as a real deregister instead of leaving a 0-player ghost
+      // sitting in the open-groups list forever.
+      if (updateBody.playerCount <= 0) {
+        await this.state.storage.delete(ROOM_KEY_PREFIX + updateBody.code);
+        return new Response('ok');
+      }
       var existing = await this.state.storage.get(ROOM_KEY_PREFIX + updateBody.code);
       if (existing) {
         existing.playerCount = updateBody.playerCount;
