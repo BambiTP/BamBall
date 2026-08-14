@@ -53,9 +53,9 @@ export class RoomDirectory {
 
     if (request.method === 'GET' && url.pathname === '/list') {
       var entries = await this.state.storage.list({ prefix: ROOM_KEY_PREFIX });
-      var rooms = Array.from(entries.values());
-      rooms.sort(function (a, b) { return b.createdAt - a.createdAt; });
-      return new Response(JSON.stringify({ rooms: rooms }), { headers: { 'Content-Type': 'application/json' } });
+      var groups = Array.from(entries.values());
+      groups.sort(function (a, b) { return b.createdAt - a.createdAt; });
+      return new Response(JSON.stringify({ groups: groups }), { headers: { 'Content-Type': 'application/json' } });
     }
 
     return new Response('not found', { status: 404 });

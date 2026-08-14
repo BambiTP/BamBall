@@ -1,14 +1,20 @@
 // api.bambipro.workers.dev - the one piece of always-on infrastructure this project
-// uses. Deliberately small: room codes, permanent replay storage, WebRTC
-// signaling (roomSignal.js), the open-rooms directory (roomDirectory.js),
+// uses. Deliberately small: group codes, permanent replay storage, WebRTC
+// signaling (roomSignal.js), the open-groups directory (roomDirectory.js),
 // and TagPro flair-login verification (tagproAuth.js). None of these carry
 // game state through the Worker - once two peers' data channel is open
 // (see roomSignal.js's header comment), gameplay traffic goes directly
-// between them.
+// between them. "Room"/"Group" naming note: user-facing text, the wire
+// format, and this route table all say "group" - the underlying Durable
+// Objects (roomSignal.js's RoomSignal, roomDirectory.js's RoomDirectory)
+// and their storage keys keep the older "room" naming internally, since
+// renaming a deployed DO class needs an explicit wrangler migration, not
+// just a find-replace, and nothing about that internal name is ever
+// user-visible.
 //
 // Routes:
-//   POST /api/rooms                 -> { code } - mints a fresh, unique room code
-//   GET  /api/rooms                 -> { rooms } - every currently-open room (roomDirectory.js),
+//   POST /api/groups                -> { code } - mints a fresh, unique group code
+//   GET  /api/groups                -> { groups } - every currently-open group (roomDirectory.js),
 //                                       for the homepage's live join-with-one-click list
 //   GET  /api/replays               -> paginated list of every stored replay's summary
 //   PUT  /api/replays/:code         -> stores a finished match's replay in R2, forever
@@ -17,7 +23,7 @@
 //                                       replays, a named preset is meant to be iterated on)
 //   GET  /api/settings              -> lists every stored settings file's name
 //   GET  /settings/:name            -> serves it back
-//   GET  /api/signal/:code          -> WebSocket upgrade, relayed to that room's RoomSignal
+//   GET  /api/signal/:code          -> WebSocket upgrade, relayed to that group's RoomSignal
 //                                       Durable Object (roomSignal.js) for WebRTC signaling
 //   POST /api/tagpro/login/start    -> begins "login with your real TagPro flair" (tagproAuth.js)
 //   POST /api/tagpro/login/cancel   -> the session holder abandons an in-progress attempt early
@@ -141,7 +147,7 @@ async function handleCreateRoom(env) {
   // Retries on the (extremely unlikely, ~33^6 possibilities) chance of a
   // collision with an existing replay key - R2 has no atomic
   // "create if absent" primitive, but a plain head()-then-decide race is
-  // an acceptable risk here: two rooms minting the same code in the same
+  // an acceptable risk here: two groups minting the same code in the same
   // instant is astronomically rarer than the collision itself.
   for (var attempt = 0; attempt < 5; attempt++) {
     var code = randomRoomCode();
@@ -151,7 +157,7 @@ async function handleCreateRoom(env) {
     if (!existing) {
       // Marks this code as legitimately ours before handing it out, so
       // handleUploadReplay (below) can refuse an upload for a code nobody
-      // actually requested. Without this, the public GET /api/rooms
+      // actually requested. Without this, the public GET /api/groups
       // listing (which shows a real match's code while it's still in
       // progress, see roomDirectory.js) combined with this route having
       // no upload auth at all would let anyone squat any code - real or
@@ -162,14 +168,14 @@ async function handleCreateRoom(env) {
       return json({ code: code });
     }
   }
-  return json({ error: 'could not allocate a room code, try again' }, 503);
+  return json({ error: 'could not allocate a group code, try again' }, 503);
 }
 
 async function handleUploadReplay(request, env, code) {
   if (!isValidRoomCode(code)) return json({ error: 'invalid room code' }, 400);
 
   var issued = await env.REPLAYS.head(ISSUED_KEY_PREFIX + code);
-  if (!issued) return json({ error: 'unknown room code - create one via POST /api/rooms first' }, 403);
+  if (!issued) return json({ error: 'unknown group code - create one via POST /api/groups first' }, 403);
 
   // The upload is already gzip'd bytes (localReplayRecorder.js's
   // CompressionStream output) or plain NDJSON text if the browser has no
@@ -253,11 +259,11 @@ export default {
       return new Response(null, { headers: corsHeaders() });
     }
 
-    if (request.method === 'POST' && url.pathname === '/api/rooms') {
+    if (request.method === 'POST' && url.pathname === '/api/groups') {
       return handleCreateRoom(env);
     }
 
-    if (request.method === 'GET' && url.pathname === '/api/rooms') {
+    if (request.method === 'GET' && url.pathname === '/api/groups') {
       return handleListRooms(env);
     }
 

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BambiPro</title>
+</head>
+<body>
+<script>
+// Both GitHub Pages and Cloudflare Pages fall back to this file for any
+// path that isn't a real static file on disk - used here to make
+// /group/<code> work as a real, bookmarkable/shareable URL even though
+// there's no server-side router: this rewrites it to index.html's own
+// ?group=<code> query-string boot path (local/main.js reads that and
+// auto-joins), and index.html itself then calls history.replaceState to
+// restore the clean /group/<code> look in the address bar once it's
+// actually loaded - see local/menu.js's showGroupCode.
+var m = location.pathname.match(/^(.*)\/group\/([A-Za-z0-9]+)\/?$/);
+if (m) {
+  location.replace(m[1] + '/?group=' + encodeURIComponent(m[2]));
+} else {
+  // Genuinely unknown path - land on the homepage rather than a dead end.
+  // Hardcoded to the two actual deployments (not derived generically from
+  // the path) since an arbitrary mistyped URL gives no reliable way to
+  // tell them apart: a domain root (Cloudflare Pages) or a GitHub Pages
+  // project page, which serves this repo under /BambiPro/, not "/".
+  location.replace(location.pathname.indexOf('/BambiPro/') === 0 ? '/BambiPro/' : '/');
+}
+</script>
+</body>
+</html>

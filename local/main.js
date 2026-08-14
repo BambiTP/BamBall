@@ -81,7 +81,7 @@ async function start(bootFn) {
 // Switches from the mode-select screen to the full loading-spinner screen
 // and runs the rest of the shared boot chain (start(), above). bootFn here
 // has nothing network-risky left to do - any connection attempt that
-// could fail (minting a room code, reaching a P2P host) already happened
+// could fail (minting a group code, reaching a P2P host) already happened
 // and already succeeded, back on the mode-select screen (see below) -
 // keeping that distinction is what let a failed join earlier NOT end up
 // corrupting #loadingOverlay's DOM (start()'s catch block sets
@@ -141,7 +141,7 @@ function initModeSelect() {
 
   function tryJoin() {
     var code = document.getElementById('joinGroupCode').value.trim();
-    if (!code) { status.textContent = 'Enter a room code first.'; return; }
+    if (!code) { status.textContent = 'Enter a group code first.'; return; }
     var password = document.getElementById('joinGroupPassword').value;
     setButtonsDisabled(true);
     status.textContent = 'Connecting to host…';
@@ -164,53 +164,53 @@ function initModeSelect() {
     if (e.key === 'Enter') tryJoin();
   });
 
-  // Live, always-on-the-homepage list of currently-open rooms (worker/src/
-  // roomDirectory.js) - clicking an open room's row joins it in one click;
+  // Live, always-on-the-homepage list of currently-open groups (worker/src/
+  // roomDirectory.js) - clicking an open group's row joins it in one click;
   // a locked one (🔒) prompts for its password right there instead of
   // making you find and fill in a separate field. Refreshes on an
   // interval only while this screen is actually showing - self-cancels
   // once beginBoot() hides #modeSelect, rather than needing a separate
   // hook into that function.
-  function emptyRoomListRow(text) {
-    return '<tr class="roomListEmptyRow"><td colspan="4">' + text + '</td></tr>';
+  function emptyGroupListRow(text) {
+    return '<tr class="groupListEmptyRow"><td colspan="4">' + text + '</td></tr>';
   }
 
-  function refreshRoomList() {
-    var container = document.getElementById('roomListRows');
+  function refreshGroupList() {
+    var container = document.getElementById('groupListRows');
     if (!container) return;
-    fetch(webrtcTransport.workerUrl + '/api/rooms').then(function (res) { return res.json(); })
+    fetch(webrtcTransport.workerUrl + '/api/groups').then(function (res) { return res.json(); })
       .then(function (data) {
-        var rooms = data.rooms || [];
-        if (!rooms.length) { container.innerHTML = emptyRoomListRow('No open rooms right now'); return; }
+        var groups = data.groups || [];
+        if (!groups.length) { container.innerHTML = emptyGroupListRow('No open groups right now'); return; }
 
         container.textContent = '';
-        rooms.forEach(function (room) {
+        groups.forEach(function (group) {
           var row = document.createElement('tr');
 
           var lockCell = document.createElement('td');
-          lockCell.className = 'roomLockCol';
-          lockCell.textContent = room.hasPassword ? '🔒' : '';
+          lockCell.className = 'groupLockCol';
+          lockCell.textContent = group.hasPassword ? '🔒' : '';
           row.appendChild(lockCell);
 
           var codeCell = document.createElement('td');
-          codeCell.className = 'roomCodeCol';
-          codeCell.textContent = room.code;
+          codeCell.className = 'groupCodeCol';
+          codeCell.textContent = group.code;
           row.appendChild(codeCell);
 
           var hostCell = document.createElement('td');
-          hostCell.className = 'roomHostCol';
-          hostCell.textContent = room.hostName;
+          hostCell.className = 'groupHostCol';
+          hostCell.textContent = group.hostName;
           row.appendChild(hostCell);
 
           var playersCell = document.createElement('td');
-          playersCell.className = 'roomPlayersCol';
-          playersCell.textContent = room.playerCount;
+          playersCell.className = 'groupPlayersCol';
+          playersCell.textContent = group.playerCount;
           row.appendChild(playersCell);
 
           row.addEventListener('click', function () {
-            document.getElementById('joinGroupCode').value = room.code;
-            if (room.hasPassword) {
-              var password = prompt('Password for room ' + room.code + ':');
+            document.getElementById('joinGroupCode').value = group.code;
+            if (group.hasPassword) {
+              var password = prompt('Password for group ' + group.code + ':');
               if (password === null) return; // cancelled
               document.getElementById('joinGroupPassword').value = password;
             }
@@ -220,24 +220,29 @@ function initModeSelect() {
           container.appendChild(row);
         });
       })
-      .catch(function () { container.innerHTML = emptyRoomListRow('Couldn’t load room list'); });
+      .catch(function () { container.innerHTML = emptyGroupListRow('Couldn’t load group list'); });
   }
 
-  refreshRoomList();
-  var roomListTimer = setInterval(function () {
-    if (document.getElementById('modeSelect').classList.contains('hidden')) { clearInterval(roomListTimer); return; }
-    refreshRoomList();
+  refreshGroupList();
+  var groupListTimer = setInterval(function () {
+    if (document.getElementById('modeSelect').classList.contains('hidden')) { clearInterval(groupListTimer); return; }
+    refreshGroupList();
   }, 5000);
 
-  // A room code shared as a link (menu.js's "Copy link" button appends
-  // ?room=CODE) skips typing the code back in by hand - prefill it and
-  // join immediately. Falls through to the normal mode-select screen,
-  // code still in the box, on any failure (bad/stale code, host offline) -
-  // same as a manually-typed join gone wrong, not a dead end.
-  var linkedRoom = new URLSearchParams(location.search).get('room');
-  if (linkedRoom) {
-    document.getElementById('joinGroupCode').value = linkedRoom.toUpperCase();
-    tryJoin();
+  // A group code shared as a link (menu.js's "Copy link" button builds a
+  // real /group/<code> path - see 404.html for how that resolves without
+  // a server-side router) skips typing the code back in by hand - prefill
+  // it, but deliberately DON'T auto-join: a guest arriving this way has
+  // never seen the identity row yet, and joining before they've had a
+  // chance to pick a name would lock them into whatever's already saved
+  // (or nothing at all). Focusing the name field instead puts them right
+  // where they need to be to fix that before clicking Join Group
+  // themselves - same as anyone starting from the lobby directly.
+  var linkedGroup = new URLSearchParams(location.search).get('group');
+  if (linkedGroup) {
+    document.getElementById('joinGroupCode').value = linkedGroup.toUpperCase();
+    status.textContent = 'Joining group ' + linkedGroup.toUpperCase() + ' - pick a name, then click Join Group.';
+    document.getElementById('displayNameInput').focus();
   }
 }
 

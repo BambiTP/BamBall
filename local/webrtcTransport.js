@@ -67,7 +67,7 @@ var webrtcTransport = (function () {
   // ---- shared: room code + replay persistence (same as localTransport.js) ----
 
   function requestRoomCode() {
-    return fetch(WORKER_URL + '/api/rooms', { method: 'POST' })
+    return fetch(WORKER_URL + '/api/groups', { method: 'POST' })
       .then(function (res) { return res.json(); })
       .then(function (data) {
         roomCode = data.code || null;

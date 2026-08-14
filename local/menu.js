@@ -37,8 +37,8 @@ function switchMenuTab(tabId) {
   }
 }
 
-// Kick/Mute/Ban are room-owner (=host) tools - activeTransport.role() is
-// null for solo play and 'peer' for anyone who joined someone else's room,
+// Kick/Mute/Ban are group-owner (=host) tools - activeTransport.role() is
+// null for solo play and 'peer' for anyone who joined someone else's group,
 // so this naturally renders nothing for either of those, no separate check
 // needed beyond the isMe skip (a host can't kick/mute/ban themselves).
 function buildPlayerRow(p, isMe) {
@@ -126,26 +126,46 @@ function initMenu() {
   appEvents.on('team:changed', renderTeams);
   renderTeams();
 
-  function showRoomCode(code) {
-    var el = document.getElementById('roomCodeText');
+  // The game's own directory, with any existing /group/<code> suffix or
+  // index.html stripped and a guaranteed trailing "/" - e.g. "/"
+  // (Cloudflare Pages, a domain root) or "/BambiPro/" (a GitHub Pages
+  // project page serves this repo under /<repo-name>/, not "/").
+  function baseGamePath() {
+    return location.pathname.replace(/\/group\/[A-Za-z0-9]+\/?$/, '/').replace(/[^/]*$/, '');
+  }
+
+  function showGroupCode(code) {
+    var el = document.getElementById('groupCodeText');
     if (el) el.textContent = code || 'unavailable';
 
-    var copyBtn = document.getElementById('copyRoomLinkBtn');
-    if (!copyBtn) return;
-    if (!code) { copyBtn.style.display = 'none'; return; }
-    copyBtn.style.display = '';
-    copyBtn.onclick = function () {
-      // Resolved against location.href (not a hardcoded absolute "/")
-      // so this keeps working whether the site's hosted at a domain root
-      // (Cloudflare Pages) or nested under a subpath, e.g. a GitHub Pages
-      // project page serves this repo at /<repo-name>/, not "/" - a
-      // hardcoded "/" would silently link outside the actual site there.
-      var link = new URL('?room=' + code, location.href).href;
-      navigator.clipboard.writeText(link).then(function () {
-        copyBtn.textContent = 'Copied!';
-        setTimeout(function () { copyBtn.textContent = 'Copy link'; }, 1500);
-      }).catch(function () {});
-    };
+    var copyBtn = document.getElementById('copyGroupLinkBtn');
+    if (copyBtn) {
+      if (!code) {
+        copyBtn.style.display = 'none';
+      } else {
+        copyBtn.style.display = '';
+        copyBtn.onclick = function () {
+          // A real /group/<code> path, not a "?group=" query string - see
+          // 404.html for how that resolves without a server-side router.
+          // Reads better pasted into a chat/Discord, and matches what the
+          // address bar itself shows once replaceState below runs.
+          var link = location.origin + baseGamePath() + 'group/' + code;
+          navigator.clipboard.writeText(link).then(function () {
+            copyBtn.textContent = 'Copied!';
+            setTimeout(function () { copyBtn.textContent = 'Copy link'; }, 1500);
+          }).catch(function () {});
+        };
+      }
+    }
+
+    // Shows the real, clean /group/<code> path in the address bar the
+    // moment the code is known - whether that's from creating a group,
+    // typing one in by hand, or following a link (main.js's linkedGroup
+    // handling lands here via a ?group=<code> query string, not the clean
+    // path itself, so without this the address bar would say one thing
+    // while "Copy link" hands out another). replaceState, never
+    // assign/href - this must never actually trigger a navigation/reload.
+    if (code) history.replaceState(null, '', baseGamePath() + 'group/' + code);
   }
 
   // 'roomCode:ready' fires as soon as the code is minted, which for the
@@ -153,15 +173,15 @@ function initMenu() {
   // well before main.js's beginBoot() ever calls start() (and therefore
   // this initMenu()). appEvents has no memory of past emits, so a listener
   // registered this late would silently miss an event that already fired,
-  // leaving roomCodeText stuck on its placeholder forever even though the
-  // room was created successfully. Read whatever activeTransport already
+  // leaving groupCodeText stuck on its placeholder forever even though the
+  // group was created successfully. Read whatever activeTransport already
   // has synchronously (both createGroup and joinGroup set their internal
   // roomCode before this ever runs) so we're never dependent on winning
   // that race, then keep the listener too - solo mode has no
   // activeTransport.getRoomCode() yet at this point, and it's cheap
   // insurance either way.
   if (typeof activeTransport !== 'undefined' && activeTransport && activeTransport.getRoomCode) {
-    showRoomCode(activeTransport.getRoomCode());
+    showGroupCode(activeTransport.getRoomCode());
   }
-  appEvents.on('roomCode:ready', showRoomCode);
+  appEvents.on('roomCode:ready', showGroupCode);
 }

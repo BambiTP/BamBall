@@ -62,10 +62,15 @@ function initJoinUI() {
     actions.leaveGame();
   });
   document.getElementById('leaveGroupBtn').addEventListener('click', function () {
-    // No real "group"/lobby to return to in this solo/local build (that's
-    // a P2P-era concept) - closest honest equivalent is starting fresh.
     socket.closeByUser();
-    location.reload();
+    // Navigates to the bare group-less URL, not just location.reload() -
+    // reloading the SAME URL (still /group/<code>, or a leftover
+    // ?group=<code> from a followed link) fed straight back into main.js's
+    // linkedGroup auto-fill on the very next load, so "Leave Group" only
+    // ever looked like it worked for one frame before landing right back
+    // on the same group's mode-select prompt.
+    var base = location.pathname.replace(/\/group\/[A-Za-z0-9]+\/?$/, '/').replace(/[^/]*$/, '');
+    location.href = base;
   });
 
   game.myTeam = null;

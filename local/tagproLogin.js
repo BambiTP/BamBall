@@ -17,10 +17,20 @@ function saveDisplayNamePref(name) {
 
 // The name + identity actually used when creating/joining a group -
 // main.js reads this right before webrtcTransport.createGroup/joinGroup.
+// Only sends the tagpro token (and so only gets the green verified name +
+// authed flag - see handleOutgoingFor's 'identify' case in
+// webrtcTransport.js/node-host/hostCli.js, which requires an actual
+// verified token before setting authed:true, never just a matching-looking
+// name) when the saved display name still matches the verified
+// reservedName exactly. Editing the name field away from it - see
+// initIdentityUI's input listener below, which stays editable even while
+// logged in - is how you deliberately drop back to an unverified custom
+// name without logging out.
 function currentIdentity() {
   var tagpro = TagproAuth.getIdentity();
-  if (tagpro) return { name: tagpro.reservedName, tagpro: tagpro };
-  return { name: loadDisplayNamePref().trim() || null, tagpro: null };
+  var typedName = loadDisplayNamePref().trim();
+  if (tagpro && typedName === tagpro.reservedName) return { name: tagpro.reservedName, tagpro: tagpro };
+  return { name: typedName || null, tagpro: null };
 }
 
 function initIdentityUI() {
@@ -28,19 +38,26 @@ function initIdentityUI() {
   var loginBtn  = document.getElementById('tagproLoginBtn');
   if (!nameInput || !loginBtn) return;
 
+  // Green only while the field's current text still matches the verified
+  // name exactly - the same condition currentIdentity() uses to decide
+  // whether to actually claim it, so the color never promises something
+  // the join packet doesn't back up.
+  function updateNameColor() {
+    var identity = TagproAuth.getIdentity();
+    nameInput.style.color = (identity && nameInput.value.trim() === identity.reservedName) ? '#4caf50' : '';
+  }
+
   function render() {
     var identity = TagproAuth.getIdentity();
-    if (identity) {
-      nameInput.value = identity.reservedName;
-      nameInput.disabled = true;
-      nameInput.style.color = '#4caf50';
-      loginBtn.textContent = 'Log out of TagPro';
-    } else {
-      nameInput.disabled = false;
-      nameInput.style.color = '';
-      nameInput.value = loadDisplayNamePref();
-      loginBtn.textContent = 'Log in with TagPro';
-    }
+    // Pre-fills with the verified name only if nothing was ever saved -
+    // an existing custom preference (typed before ever logging in) is
+    // left alone rather than silently overwritten. tagpro-login.html's
+    // own "verified" step separately seeds this on a FRESH login, which
+    // is the case that actually needs the auto-fill.
+    if (identity && !loadDisplayNamePref()) saveDisplayNamePref(identity.reservedName);
+    nameInput.value = loadDisplayNamePref();
+    loginBtn.textContent = identity ? 'Log out of TagPro' : 'Log in with TagPro';
+    updateNameColor();
   }
 
   loginBtn.addEventListener('click', function () {
@@ -69,9 +86,13 @@ function initIdentityUI() {
       + '&server=' + encodeURIComponent(webrtcTransport.workerUrl);
   });
 
+  // Editable at all times, logged in or not - typing away from the
+  // verified reservedName is exactly how currentIdentity() above decides
+  // to drop the tagpro token (and so the green name/authed flag) without
+  // requiring a full log-out.
   nameInput.addEventListener('input', function () {
-    if (TagproAuth.getIdentity()) return; // locked while logged in
     saveDisplayNamePref(nameInput.value.slice(0, 20));
+    updateNameColor();
   });
 
   render();

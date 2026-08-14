@@ -64,32 +64,33 @@
   #modeSelectStatus { font-size: 13px; color: #e07a7a; min-height: 16px; }
 
   /* ---- identity: display name + optional TagPro login, shown above the
-     mode buttons - see local/tagproLogin.js. A logged-in name is locked
-     (disabled input, green text) since it's a trust signal, not just a
-     label. ---- */
+     mode buttons - see local/tagproLogin.js. Stays editable even while
+     logged in - green text is just a live "this matches your verified
+     name" signal (local/tagproLogin.js's updateNameColor), not a lock;
+     editing it away is how you deliberately drop back to an unverified
+     custom name. ---- */
   #identityRow { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
   #displayNameInput { font-size: 14px; padding: 8px 10px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; width: 150px; box-sizing: border-box; }
-  #displayNameInput:disabled { opacity: 1; } /* stays legible (green text) while locked, not greyed out like a normal disabled field */
   #tagproLoginBtn { width: auto; font-size: 13px; padding: 8px 14px; background: #5588ff; }
 
-  /* ---- homepage open-rooms list: a real table, not stacked cards -
+  /* ---- homepage open-groups list: a real table, not stacked cards -
      styled after HaxBall's own room browser (dense rows, muted uppercase
      column headers, a lock glyph column of its own, hover-highlight to
      click-to-join). Always visible, not behind a button - see local/
-     main.js's refreshRoomList(). ---- */
-  .roomListLabel { font-size: 12px; text-transform: uppercase; color: #777; letter-spacing: 0.5px; margin-top: 4px; }
-  #roomList { width: 420px; max-height: 220px; overflow-y: auto; margin-top: 4px; border: 1px solid #2a2a2a; border-radius: 6px; background: #161616; }
-  #roomTable { width: 100%; border-collapse: collapse; font-size: 13px; }
-  #roomTable thead th { position: sticky; top: 0; background: #1c1c1c; color: #777; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: normal; text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2a2a; }
-  #roomTable th.roomLockCol, #roomTable td.roomLockCol { width: 20px; text-align: center; padding-left: 8px; padding-right: 0; }
-  #roomTable th.roomPlayersCol, #roomTable td.roomPlayersCol { text-align: right; padding-right: 12px; }
-  #roomTable tbody tr { cursor: pointer; border-bottom: 1px solid #232323; }
-  #roomTable tbody tr:hover { background: #202840; }
-  #roomTable td { padding: 7px 10px; color: #ddd; }
-  #roomTable td.roomCodeCol { font-family: monospace; letter-spacing: 1px; }
-  #roomTable td.roomHostCol { color: #999; }
-  .roomListEmptyRow td { font-size: 12px; color: #666; text-align: center; padding: 14px; cursor: default; }
-  .roomListEmptyRow:hover { background: none !important; }
+     main.js's refreshGroupList(). ---- */
+  .groupListLabel { font-size: 12px; text-transform: uppercase; color: #777; letter-spacing: 0.5px; margin-top: 4px; }
+  #groupList { width: 420px; max-height: 220px; overflow-y: auto; margin-top: 4px; border: 1px solid #2a2a2a; border-radius: 6px; background: #161616; }
+  #groupTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #groupTable thead th { position: sticky; top: 0; background: #1c1c1c; color: #777; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: normal; text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2a2a; }
+  #groupTable th.groupLockCol, #groupTable td.groupLockCol { width: 20px; text-align: center; padding-left: 8px; padding-right: 0; }
+  #groupTable th.groupPlayersCol, #groupTable td.groupPlayersCol { text-align: right; padding-right: 12px; }
+  #groupTable tbody tr { cursor: pointer; border-bottom: 1px solid #232323; }
+  #groupTable tbody tr:hover { background: #202840; }
+  #groupTable td { padding: 7px 10px; color: #ddd; }
+  #groupTable td.groupCodeCol { font-family: monospace; letter-spacing: 1px; }
+  #groupTable td.groupHostCol { color: #999; }
+  .groupListEmptyRow td { font-size: 12px; color: #666; text-align: center; padding: 14px; cursor: default; }
+  .groupListEmptyRow:hover { background: none !important; }
 
   /* ---- ESC menu ---- */
   #menu { position: absolute; inset: 0; background: rgba(10,10,12,0.92); color: #eee; display: flex; flex-direction: column; z-index: 100; }
@@ -109,8 +110,8 @@
   .teamBox[data-team="blue"] h3 { color: #6699ff; }
   .teamBox[data-team="spectator"] h3 { color: #999; }
   .playerRow { padding: 6px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); margin-bottom: 4px; font-size: 13px; }
-  .roomCodeLine { margin-top: 16px; font-size: 12px; color: #999; }
-  .roomCodeLine code { background: #222; padding: 2px 6px; border-radius: 4px; color: #ddd; }
+  .groupCodeLine { margin-top: 16px; font-size: 12px; color: #999; }
+  .groupCodeLine code { background: #222; padding: 2px 6px; border-radius: 4px; color: #ddd; }
 
   /* ---- settings maker + record/files tabs ---- */
   .makerRow { margin-bottom: 14px; }
@@ -132,25 +133,25 @@
 <div id="modeSelect">
   <h1>Play a match</h1>
   <div id="identityRow">
-    <input id="displayNameInput" placeholder="Your name" maxlength="20" autocomplete="off">
+    <input id="displayNameInput" placeholder="Someball" maxlength="20" autocomplete="off">
     <button id="tagproLoginBtn">Log in with TagPro</button>
   </div>
   <button id="playSoloBtn">Play Solo</button>
   <button id="createGroupBtn">Create Group</button>
-  <input id="createGroupPassword" type="password" placeholder="Room password (optional)" autocomplete="off">
+  <input id="createGroupPassword" type="password" placeholder="Group password (optional)" autocomplete="off">
   <div id="joinGroupRow">
     <input id="joinGroupCode" placeholder="CODE" maxlength="6">
     <input id="joinGroupPassword" type="password" placeholder="Password" autocomplete="off">
     <button id="joinGroupBtn">Join Group</button>
   </div>
   <div id="modeSelectStatus"></div>
-  <div class="roomListLabel">Open Rooms</div>
-  <div id="roomList">
-    <table id="roomTable">
+  <div class="groupListLabel">Open Groups</div>
+  <div id="groupList">
+    <table id="groupTable">
       <thead>
-        <tr><th class="roomLockCol"></th><th>Room</th><th>Host</th><th class="roomPlayersCol">Players</th></tr>
+        <tr><th class="groupLockCol"></th><th>Group</th><th>Host</th><th class="groupPlayersCol">Players</th></tr>
       </thead>
-      <tbody id="roomListRows"><tr class="roomListEmptyRow"><td colspan="4">Loading…</td></tr></tbody>
+      <tbody id="groupListRows"><tr class="groupListEmptyRow"><td colspan="4">Loading…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -193,7 +194,7 @@
         <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
         <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
       </div>
-      <div class="roomCodeLine">Room: <code id="roomCodeText">connecting…</code> <button class="menuBtn" id="copyRoomLinkBtn" style="display:none;padding:2px 8px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays" style="color:#7aa2ff">Browse all replays</a></div>
+      <div class="groupCodeLine">Group: <code id="groupCodeText">connecting…</code> <button class="menuBtn" id="copyGroupLinkBtn" style="display:none;padding:2px 8px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays" style="color:#7aa2ff">Browse all replays</a></div>
     </div>
 
     <div id="texturesPanel" class="menuPanel hidden">

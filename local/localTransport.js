@@ -31,7 +31,7 @@ var localTransport = (function () {
   // replay home to upload to (recorder.finish() still works, the download
   // fallback still fires - see the matchEnd handler below).
   function requestRoomCode() {
-    return fetch(WORKER_URL + '/api/rooms', { method: 'POST' })
+    return fetch(WORKER_URL + '/api/groups', { method: 'POST' })
       .then(function (res) { return res.json(); })
       .then(function (data) {
         roomCode = data.code || null;
