@@ -69,9 +69,9 @@ const TOKEN_MAX_AGE_MS    = 30 * 24 * 60 * 60 * 1000; // 30 days
 const VERIFICATION_FLAIR_ID = 'degree.pencil';
 
 function isNoFlair(flair) {
-  // TagPro's own "no flair" wire value is unconfirmed too - treated as any
-  // falsy/empty value (covers the likely candidates: "", null, undefined)
-  // rather than guessing one specific literal.
+  // Confirmed live against a real account: clearing a flair reports
+  // selectedFlair === "" (empty string) - falsy, so the broad check below
+  // already covered it correctly without needing a change.
   return !flair;
 }
 
