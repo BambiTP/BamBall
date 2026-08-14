@@ -149,7 +149,7 @@ function initMenu() {
           // 404.html for how that resolves without a server-side router.
           // Reads better pasted into a chat/Discord, and matches what the
           // address bar itself shows once replaceState below runs.
-          var link = location.origin + baseGamePath() + 'group/' + code;
+          var link = location.origin + baseGamePath() + 'group/' + code + '/';
           navigator.clipboard.writeText(link).then(function () {
             copyBtn.textContent = 'Copied!';
             setTimeout(function () { copyBtn.textContent = 'Copy link'; }, 1500);
@@ -158,14 +158,24 @@ function initMenu() {
       }
     }
 
-    // Shows the real, clean /group/<code> path in the address bar the
+    // Shows the real, clean /group/<code>/ path in the address bar the
     // moment the code is known - whether that's from creating a group,
     // typing one in by hand, or following a link (main.js's linkedGroup
     // handling lands here via a ?group=<code> query string, not the clean
     // path itself, so without this the address bar would say one thing
     // while "Copy link" hands out another). replaceState, never
     // assign/href - this must never actually trigger a navigation/reload.
-    if (code) history.replaceState(null, '', baseGamePath() + 'group/' + code);
+    //
+    // The trailing slash after <code> is load-bearing, not cosmetic: every
+    // asset this page fetches from here on (spriteSheetLoader.js's sheet/
+    // manifest URLs, texture fetches, etc.) uses a relative "./..." path,
+    // which resolves against whatever the browser currently treats as this
+    // document's directory. Without the trailing slash, "<code>" itself
+    // looks like a filename to the browser, so those fetches would resolve
+    // one directory up (.../group/assets/... instead of .../assets/...)
+    // and 404 - confirmed live, the asset loader failing right after
+    // creating or joining a group.
+    if (code) history.replaceState(null, '', baseGamePath() + 'group/' + code + '/');
   }
 
   // 'roomCode:ready' fires as soon as the code is minted, which for the
