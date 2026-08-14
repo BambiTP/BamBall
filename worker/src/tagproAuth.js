@@ -9,19 +9,29 @@
 //
 // Routes (wired in index.js):
 //   POST /api/tagpro/login/start { profileId }
-//     -> records the account's CURRENT flair, tells the client to clear it,
-//        and mints a random `session` value returned only to this caller -
-//        required on every login/check below so a login can only be polled
-//        (and its resulting token claimed) by whoever actually started it,
-//        not by any other party who happens to know the same profileId
-//        (which is meant to be public/shareable, so is not itself a secret).
-//        Refuses (409) to mint a second session while one's already active
-//        for the same profileId - see the long comment on this in
-//        handleLoginStart for why that matters and what it doesn't fix.
-//   POST /api/tagpro/login/check { profileId, session }  (client polls this
-//        every few seconds while showing on-screen instructions)
+//     -> records the account's CURRENT flair, tells the client what to do
+//        first, and mints a random `session` value returned only to this
+//        caller - required on every login/check below so a login can only
+//        be checked (and its resulting token claimed) by whoever actually
+//        started it, not by any other party who happens to know the same
+//        profileId (which is meant to be public/shareable, so is not
+//        itself a secret). Refuses (409) to mint a second session while
+//        one's already active for the same profileId - see the long
+//        comment on this in handleLoginStart for why that matters and
+//        what it doesn't fix.
+//   POST /api/tagpro/login/check { profileId, session }  (the client calls
+//        this once per user action - e.g. a "Confirm" button click after
+//        they say they've made the change - not on a background timer)
 //     -> re-fetches the live profile every call, advances a small state
-//        machine: await-clear -> await-verify-flair -> verified
+//        machine: [await-non-blank ->] await-pencil -> await-blank ->
+//        verified. await-non-blank is skipped entirely if the account's
+//        flair wasn't already blank when login/start was called - see
+//        handleLoginStart. It exists because if the FIRST required step
+//        were just "clear your flair" the way this used to work, an
+//        account that already happened to have no flair equipped would
+//        satisfy it for free, without proving any live action at all;
+//        requiring a detour through some other, non-blank flair first
+//        guarantees every remaining step needs a genuine, observed change.
 //   POST /api/tagpro/verify { profileId, reservedName, verifiedAt, token }
 //     -> recomputes the HMAC a completed login/check minted and compares.
 //        This is what a HOST calls (webrtcTransport.js) to check a joining
@@ -127,6 +137,31 @@ function readSession(body) {
   return typeof session === 'string' && session ? session : null;
 }
 
+// justAdvanced: true right after a check moves pending.state forward (so
+// the message reads as "good, now do the next thing"), false when a check
+// finds the account still sitting in the same state it already was in (so
+// it reads as "that hasn't happened yet, still waiting") - same
+// distinction the client-facing "Confirm" button relies on to tell someone
+// their last click was too early versus that it's time for the next step.
+function instructionsFor(state, justAdvanced) {
+  if (state === 'await-non-blank') {
+    return justAdvanced
+      ? 'Your flair is already set to None - set it to any OTHER flair first, then confirm.'
+      : 'Still set to None - set your flair to any flair OTHER than None, then confirm.';
+  }
+  if (state === 'await-pencil') {
+    return justAdvanced
+      ? 'Now set your flair to "' + VERIFICATION_FLAIR_ID + '", then confirm.'
+      : 'Still waiting - set your flair to "' + VERIFICATION_FLAIR_ID + '", then confirm.';
+  }
+  if (state === 'await-blank') {
+    return justAdvanced
+      ? 'Almost done - now set your flair back to None, then confirm.'
+      : 'Still waiting - set your flair back to None, then confirm.';
+  }
+  return '';
+}
+
 export async function handleLoginStart(request, env) {
   var body = await request.json().catch(function () { return null; });
   var profileId = readProfileId(body);
@@ -178,14 +213,18 @@ export async function handleLoginStart(request, env) {
   // control of the TagPro account; this is what proves the caller polling
   // for the result is the same one who asked for that proof.
   var session = crypto.randomUUID();
+  // See this file's header comment for why await-non-blank exists at all -
+  // skipped straight to await-pencil for the (overwhelmingly common) case
+  // where the account already has some flair equipped.
+  var state = isNoFlair(profile.selectedFlair) ? 'await-non-blank' : 'await-pencil';
 
   await env.TAGPRO_LOGIN.put(LOGIN_KEY_PREFIX + profileId, JSON.stringify({
-    state: 'await-clear',
+    state: state,
     originalFlair: profile.selectedFlair,
     session: session,
   }), { expirationTtl: LOGIN_TTL_SECONDS });
 
-  return json({ state: 'await-clear', session: session, instructions: 'On your TagPro profile, set your flair to None, then check again.' });
+  return json({ state: state, session: session, instructions: instructionsFor(state, true) });
 }
 
 export async function handleLoginCheck(request, env) {
@@ -208,18 +247,27 @@ export async function handleLoginCheck(request, env) {
   var profile;
   try { profile = await fetchTagproProfile(profileId); } catch (e) { return json({ error: e.message }, 502); }
 
-  if (pending.state === 'await-clear') {
-    if (!isNoFlair(profile.selectedFlair)) {
-      return json({ state: 'await-clear', instructions: 'Still waiting - set your flair to None first.' });
+  if (pending.state === 'await-non-blank') {
+    if (isNoFlair(profile.selectedFlair)) {
+      return json({ state: 'await-non-blank', instructions: instructionsFor('await-non-blank', false) });
     }
-    pending.state = 'await-verify-flair';
+    pending.state = 'await-pencil';
     await env.TAGPRO_LOGIN.put(LOGIN_KEY_PREFIX + profileId, JSON.stringify(pending), { expirationTtl: LOGIN_TTL_SECONDS });
-    return json({ state: 'await-verify-flair', instructions: 'Now set your flair to "' + VERIFICATION_FLAIR_ID + '".' });
+    return json({ state: 'await-pencil', instructions: instructionsFor('await-pencil', true) });
   }
 
-  if (pending.state === 'await-verify-flair') {
+  if (pending.state === 'await-pencil') {
     if (profile.selectedFlair !== VERIFICATION_FLAIR_ID) {
-      return json({ state: 'await-verify-flair', instructions: 'Still waiting - set your flair to "' + VERIFICATION_FLAIR_ID + '".' });
+      return json({ state: 'await-pencil', instructions: instructionsFor('await-pencil', false) });
+    }
+    pending.state = 'await-blank';
+    await env.TAGPRO_LOGIN.put(LOGIN_KEY_PREFIX + profileId, JSON.stringify(pending), { expirationTtl: LOGIN_TTL_SECONDS });
+    return json({ state: 'await-blank', instructions: instructionsFor('await-blank', true) });
+  }
+
+  if (pending.state === 'await-blank') {
+    if (!isNoFlair(profile.selectedFlair)) {
+      return json({ state: 'await-blank', instructions: instructionsFor('await-blank', false) });
     }
     await env.TAGPRO_LOGIN.delete(LOGIN_KEY_PREFIX + profileId); // login's done - nothing further to track server-side
     var verifiedAt = Date.now();
@@ -231,7 +279,10 @@ export async function handleLoginCheck(request, env) {
       reservedName: reservedName,
       verifiedAt: verifiedAt,
       token: token,
-      instructions: 'Verified! Feel free to set your flair back to ' + (pending.originalFlair || 'None') + '.',
+      // The flow already ends with the account back on None by design (the
+      // await-blank step above) - originalFlair is only worth mentioning
+      // if they'd actually had something else equipped to begin with.
+      instructions: 'Verified!' + (pending.originalFlair ? ' Feel free to set your flair back to ' + pending.originalFlair + '.' : ''),
     });
   }
 

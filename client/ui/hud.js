@@ -36,6 +36,15 @@ function updateHudScore(scores) {
   if (el) el.textContent = 'Red ' + scores.red + ' - ' + scores.blue + ' Blue';
 }
 
+// Round-trip time to whoever's authoritative for this session - the host's
+// own local ping is a synchronous loopback (handleOutgoingFor calls
+// dispatch in the same tick, see webrtcTransport.js's hostSocket), so it
+// reads ~0ms; a peer's reflects the real P2P data channel to the host.
+function updateHudPing(ms) {
+  var el = document.getElementById('hudPing');
+  if (el) el.textContent = ms + ' ms';
+}
+
 var CHAT_LOG_MAX_ROWS = 50; // trims oldest rows so a long match's chat can't grow the DOM forever
 
 function appendChatMessage(name, text) {
@@ -58,12 +67,21 @@ function appendChatMessage(name, text) {
   log.scrollTop = log.scrollHeight;
 }
 
+var PING_INTERVAL_MS = 2000;
+
 function initHud() {
   appEvents.on('score:changed', updateHudScore);
   appEvents.on('chat:message', appendChatMessage);
+  appEvents.on('ping:measured', updateHudPing);
   settingsEvents.on('matchInfo:changed', function () {
     updateHudScore(settingsState.matchInfo.scores || { red: 0, blue: 0 });
     renderHudTimer();
   });
   setInterval(renderHudTimer, 250);
+
+  // actions.ping()'s reply is packetApplier.js's 'pong' handler, which is
+  // what emits 'ping:measured' above - nothing sent this before now, so
+  // the packet round trip existed but no ping was ever actually measured.
+  actions.ping();
+  setInterval(actions.ping, PING_INTERVAL_MS);
 }

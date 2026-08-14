@@ -6,6 +6,20 @@
 
 var keyState = { left: false, right: false, up: false, down: false };
 
+// Updated on every 'ping:measured' (see initKeyboardInput) - sendInput
+// below holds the LOCAL player's own predicted input flags back by half
+// of this, so local prediction lines up with roughly when the host will
+// actually see and act on the real packet, instead of visibly running
+// ping/2 ahead of the authoritative sim the way instant local-apply does.
+var currentPingMs = 0;
+
+// A later input's delayed apply can finish before an earlier one that got
+// delayed longer (e.g. a ping spike mid-flight) - this only ever lets
+// state move forward to a NEWER captured input, never backward to a
+// stale one that happens to land late.
+var localInputSeq  = 0;
+var appliedInputSeq = 0;
+
 // event.key -> movement direction, derived from localSettings.keys. Rebuilt
 // whenever a binding changes. Single letters match case-insensitively so
 // Shift+w still moves.
@@ -52,16 +66,29 @@ function blockedByTyping(event) {
 }
 
 function sendInput() {
+  // Sent immediately - this function's own delay below is purely about
+  // when OUR OWN local prediction reflects the change, never about when
+  // the host finds out (the host must always get it as soon as possible).
   actions.sendInput(keyState.left, keyState.right, keyState.up, keyState.down);
 
-  // Server never relays our own input back - apply it locally.
-  var me = game.myId !== null ? getPlayer(game.myId) : null;
-  if (me) {
-    me.left  = keyState.left;
-    me.right = keyState.right;
-    me.up    = keyState.up;
-    me.down  = keyState.down;
-  }
+  // Server never relays our own input back - applied locally instead, but
+  // not until roughly half a round trip has passed (see currentPingMs
+  // above). Captured now rather than re-read from keyState when the
+  // timeout fires, so a key that's already changed again by then doesn't
+  // retroactively rewrite what THIS particular update represents.
+  var flags = { left: keyState.left, right: keyState.right, up: keyState.up, down: keyState.down };
+  var seq = ++localInputSeq;
+  setTimeout(function () {
+    if (seq < appliedInputSeq) return; // superseded by a newer update that already applied - drop this stale one
+    appliedInputSeq = seq;
+    var me = game.myId !== null ? getPlayer(game.myId) : null;
+    if (me) {
+      me.left  = flags.left;
+      me.right = flags.right;
+      me.up    = flags.up;
+      me.down  = flags.down;
+    }
+  }, currentPingMs / 2);
 }
 
 // Enter/Escape on #chatInput itself, not the global keydown handler above -
@@ -98,6 +125,7 @@ function initChatInput() {
 function initKeyboardInput() {
   rebuildKeyLookup();
   localSettingsEvents.on('localSettings:changed', rebuildKeyLookup);
+  appEvents.on('ping:measured', function (ms) { currentPingMs = ms; });
   initChatInput();
 
   window.addEventListener('keydown', function (event) {

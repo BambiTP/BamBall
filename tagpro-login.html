@@ -54,9 +54,10 @@
     <button id="startBtn">Start login</button>
   </div>
 
-  <!-- Step 3: follow instructions, polling -->
+  <!-- Step 3: follow instructions, confirm when done -->
   <div id="stepPolling" class="step">
     <div id="instructions"></div>
+    <button id="confirmBtn">I've done this - Confirm</button>
     <button id="cancelBtn" class="secondary">Cancel</button>
   </div>
 
@@ -121,7 +122,10 @@ function showStep(name) {
   Object.keys(steps).forEach(function (key) { steps[key].classList.toggle('active', key === name); });
 }
 
-var stopPolling = null;
+// Set once startLogin() succeeds, cleared on cancel/verify - confirmStep()
+// needs both to call checkLogin.
+var activeProfileId = null;
+var activeSession = null;
 
 function startLogin() {
   var input = document.getElementById('profileInput').value.trim();
@@ -130,21 +134,40 @@ function startLogin() {
 
   var profileId = TagproAuth.extractProfileId(input);
   TagproAuth.startLogin(SERVER_URL, profileId).then(function (result) {
+    activeProfileId = profileId;
+    activeSession = result.session;
     showStep('polling');
     document.getElementById('instructions').textContent = result.instructions;
-
-    stopPolling = TagproAuth.poll(SERVER_URL, profileId, result.session, {
-      onUpdate: function (result, err) {
-        if (err) { statusText.textContent = 'Lost contact with the server - try again.'; showStep('enter'); return; }
-        document.getElementById('instructions').textContent = result.instructions;
-        if (result.state === 'verified') {
-          document.getElementById('verifiedName').textContent = result.reservedName;
-          showStep('verified');
-        }
-      },
-    });
   }).catch(function (err) {
     statusText.textContent = err.message || 'Could not start login.';
+  });
+}
+
+// One explicit check per "Confirm" click - no background timer. The user
+// makes the flair change over on TagPro's own site (a different tab),
+// then comes back and clicks Confirm; if the server hasn't seen it yet,
+// the instructions text says so ("Still waiting...") and they just try
+// again once they've actually made the change.
+function confirmStep() {
+  var confirmBtn = document.getElementById('confirmBtn');
+  confirmBtn.disabled = true;
+  statusText.textContent = '';
+
+  TagproAuth.checkLogin(SERVER_URL, activeProfileId, activeSession).then(function (result) {
+    confirmBtn.disabled = false;
+    document.getElementById('instructions').textContent = result.instructions;
+    if (result.state === 'verified') {
+      // checkLogin (unlike poll()) doesn't save on its own - see
+      // tagproAuthLib.js's own usage comment.
+      TagproAuth.saveIdentity({ profileId: result.profileId, reservedName: result.reservedName, verifiedAt: result.verifiedAt, token: result.token });
+      activeProfileId = null;
+      activeSession = null;
+      document.getElementById('verifiedName').textContent = result.reservedName;
+      showStep('verified');
+    }
+  }).catch(function (err) {
+    confirmBtn.disabled = false;
+    statusText.textContent = err.message || 'Could not check - try again.';
   });
 }
 
@@ -153,8 +176,11 @@ document.getElementById('profileInput').addEventListener('keydown', function (e)
   if (e.key === 'Enter') startLogin();
 });
 
+document.getElementById('confirmBtn').addEventListener('click', confirmStep);
+
 document.getElementById('cancelBtn').addEventListener('click', function () {
-  if (stopPolling) stopPolling();
+  activeProfileId = null;
+  activeSession = null;
   showStep('enter');
 });
 

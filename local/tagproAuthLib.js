@@ -19,8 +19,19 @@
 // Usage:
 //   var profileId = TagproAuth.extractProfileId(userPastedText);
 //   TagproAuth.startLogin(serverUrl, profileId).then(function (result) {
-//     // result: { profileId, session, state: 'await-clear', instructions }
+//     // result: { profileId, session, state, instructions } - state is
+//     // whichever of the server's states applies first (see worker/src/
+//     // tagproAuth.js's own header comment for the full list/order).
 //   });
+//
+//   // Manual/confirm-button-driven (what this project's own tagpro-login.html
+//   // does): call checkLogin once per user action, e.g. a "Confirm" button
+//   // clicked after the user says they've made the change on TagPro's site -
+//   // NOT on a timer. checkLogin does NOT auto-save on 'verified' - call
+//   // saveIdentity yourself with the result when driving it this way.
+//   TagproAuth.checkLogin(serverUrl, profileId, result.session).then(function (result) { ... });
+//
+//   // Or, background-polled instead:
 //   var stop = TagproAuth.poll(serverUrl, profileId, result.session, {
 //     onUpdate: function (result, err) { ... }, // fires on every check
 //     intervalMs: 3000, // optional, defaults to 3000
