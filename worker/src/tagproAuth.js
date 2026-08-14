@@ -19,6 +19,14 @@
 //        one's already active for the same profileId - see the long
 //        comment on this in handleLoginStart for why that matters and
 //        what it doesn't fix.
+//   POST /api/tagpro/login/cancel { profileId, session }
+//     -> lets whoever holds an in-progress attempt's session abandon it
+//        early (e.g. the "Cancel" button) instead of waiting out its TTL,
+//        freeing the profileId for an immediate fresh login/start.
+//        Requires the matching session for the same reason login/check
+//        does - without that check, this would just be a new way for
+//        anyone (not just the real attempt holder) to reset someone
+//        else's in-progress login and immediately claim it themselves.
 //   POST /api/tagpro/login/check { profileId, session }  (the client calls
 //        this once per user action - e.g. a "Confirm" button click after
 //        they say they've made the change - not on a background timer)
@@ -219,6 +227,23 @@ export async function handleLoginStart(request, env) {
   }), { expirationTtl: LOGIN_TTL_SECONDS });
 
   return json({ state: state, session: session, instructions: instructionsFor(state, true) });
+}
+
+export async function handleLoginCancel(request, env) {
+  var body = await request.json().catch(function () { return null; });
+  var profileId = readProfileId(body);
+  if (!profileId) return json({ error: 'missing profileId' }, 400);
+  var session = readSession(body);
+
+  var raw = await env.TAGPRO_LOGIN.get(LOGIN_KEY_PREFIX + profileId);
+  if (raw && session && session === JSON.parse(raw).session) {
+    await env.TAGPRO_LOGIN.delete(LOGIN_KEY_PREFIX + profileId);
+  }
+  // Always reports success whether or not there was actually anything to
+  // cancel, or the session didn't match - nothing to leak either way, and
+  // the caller's own next login/start will succeed or 409 based on the
+  // real resulting state regardless of what this response says.
+  return json({ ok: true });
 }
 
 export async function handleLoginCheck(request, env) {

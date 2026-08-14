@@ -179,6 +179,14 @@ document.getElementById('profileInput').addEventListener('keydown', function (e)
 document.getElementById('confirmBtn').addEventListener('click', confirmStep);
 
 document.getElementById('cancelBtn').addEventListener('click', function () {
+  // Tells the server to free this profileId up immediately (best-effort,
+  // see cancelLogin's own comment) rather than leaving it locked out for
+  // the rest of its TTL - the whole point of "Cancel" is to let you
+  // actually start over right away, not just hide the UI while the old
+  // attempt keeps blocking a fresh login/start underneath.
+  if (activeProfileId && activeSession) {
+    TagproAuth.cancelLogin(SERVER_URL, activeProfileId, activeSession);
+  }
   activeProfileId = null;
   activeSession = null;
   showStep('enter');

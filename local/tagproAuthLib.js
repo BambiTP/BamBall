@@ -95,6 +95,18 @@ var TagproAuth = (function () {
     return apiCall(serverUrl, 'login/check', { profileId: profileId, session: session });
   }
 
+  // Lets an in-progress attempt's own session holder abandon it early
+  // (e.g. a "Cancel" button) instead of it sitting locked for the rest of
+  // its TTL - see worker/src/tagproAuth.js's handleLoginCancel for why the
+  // session is required here too. Best-effort: always resolves (never
+  // rejects), since a cancel that fails to reach the server just means the
+  // old attempt lingers until its TTL expires rather than being freed
+  // immediately - annoying, not broken, so callers don't need to handle
+  // an error case here.
+  function cancelLogin(serverUrl, profileId, session) {
+    return apiCall(serverUrl, 'login/cancel', { profileId: profileId, session: session }).catch(function () {});
+  }
+
   // Have the host's server confirm a PEER's self-reported identity token
   // (a browser can't safely hold the signing secret itself, so a claimed
   // token has to be checked against the server that minted it before
@@ -144,6 +156,7 @@ var TagproAuth = (function () {
     logout: logout,
     startLogin: startLogin,
     checkLogin: checkLogin,
+    cancelLogin: cancelLogin,
     verifyToken: verifyToken,
     poll: poll,
   };

@@ -20,7 +20,8 @@
 //   GET  /api/signal/:code          -> WebSocket upgrade, relayed to that room's RoomSignal
 //                                       Durable Object (roomSignal.js) for WebRTC signaling
 //   POST /api/tagpro/login/start    -> begins "login with your real TagPro flair" (tagproAuth.js)
-//   POST /api/tagpro/login/check    -> polled by the client until the flair sequence completes
+//   POST /api/tagpro/login/cancel   -> the session holder abandons an in-progress attempt early
+//   POST /api/tagpro/login/check    -> checked by the client (a "Confirm" click) until the flair sequence completes
 //   POST /api/tagpro/verify         -> a host checks a joining peer's claimed identity token
 //   GET  /api/fortunatemaps/:id/png  -> proxies fortunatemaps.herokuapp.com's map PNG
 //   GET  /api/fortunatemaps/:id/json -> proxies its JSON sidecar (wiring/spawn data)
@@ -32,7 +33,7 @@
 import { RoomSignal } from './roomSignal.js';
 import { RoomDirectory } from './roomDirectory.js';
 import { json, corsHeaders } from './http.js';
-import { handleLoginStart, handleLoginCheck, handleVerifyToken } from './tagproAuth.js';
+import { handleLoginStart, handleLoginCancel, handleLoginCheck, handleVerifyToken } from './tagproAuth.js';
 export { RoomSignal, RoomDirectory };
 
 const ROOM_CODE_ALPHABET  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I - avoids look-alikes when read aloud or typed by hand
@@ -262,6 +263,10 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/api/tagpro/login/start') {
       return handleLoginStart(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/tagpro/login/cancel') {
+      return handleLoginCancel(request, env);
     }
 
     if (request.method === 'POST' && url.pathname === '/api/tagpro/login/check') {
