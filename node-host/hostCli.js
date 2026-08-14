@@ -406,7 +406,7 @@ async function boot() {
   log('');
   log('==================================================');
   log(' Room code: ' + roomCode + (args.password ? ' (password protected)' : ''));
-  log(' Join link: https://bambitp.github.io/BambiPro/?room=' + roomCode);
+  log(' Join link: https://bambitp.github.io/BambiPro/group/' + roomCode);
   log(' Map: ' + gi.gameState.mapName);
   log('==================================================');
   log('');
