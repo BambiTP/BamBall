@@ -283,7 +283,7 @@ var localTransport = (function () {
   // separately, same as the real client does against a real server.
   async function boot() {
     requestRoomCode(); // fire-and-forget in parallel - never blocks the map/game from loading
-    var res    = await fetch('./assets/maps/default.json');
+    var res    = await fetch(GAME_BASE_PATH + 'assets/maps/default.json');
     var mapDoc = await res.json();
 
     gi = new GameInstance(gameConfig, 'game');
@@ -324,7 +324,7 @@ var localTransport = (function () {
   // after switching, same as the real game.
   function switchMap(mapFile) {
     if (!gi) return Promise.reject(new Error('not booted yet'));
-    return fetch('./assets/maps/' + mapFile)
+    return fetch(GAME_BASE_PATH + 'assets/maps/' + mapFile)
       .then(function (res) { return res.json(); })
       .then(function (mapDoc) {
         gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });

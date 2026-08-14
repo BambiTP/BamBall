@@ -38,7 +38,7 @@ function initSettingsMaker() {
   }
   refreshLoadList();
 
-  fetch('./assets/maps/manifest.json').then(function (res) { return res.json(); }).then(function (maps) {
+  fetch(GAME_BASE_PATH + 'assets/maps/manifest.json').then(function (res) { return res.json(); }).then(function (maps) {
     maps.forEach(function (m) {
       var opt = document.createElement('option');
       opt.value = m.file;

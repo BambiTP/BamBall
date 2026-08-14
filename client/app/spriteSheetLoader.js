@@ -13,9 +13,9 @@ var spriteSheetLoader = {
   fetch: function () {
     return Promise.resolve({
       hash: 'default',
-      sheetUrl: './assets/sprites/default.png',
-      manifestUrl: './assets/sprites/default.json',
-      wallsUrl: './assets/sprites/walls/classic.png',
+      sheetUrl: GAME_BASE_PATH + 'assets/sprites/default.png',
+      manifestUrl: GAME_BASE_PATH + 'assets/sprites/default.json',
+      wallsUrl: GAME_BASE_PATH + 'assets/sprites/walls/classic.png',
     });
   },
 

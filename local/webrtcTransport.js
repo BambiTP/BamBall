@@ -588,7 +588,7 @@ var webrtcTransport = (function () {
     await connectSignal(code, 'host', password, hostAccount.display_name);
     globalThis.socket = hostSocket;
 
-    var res    = await fetch('./assets/maps/default.json');
+    var res    = await fetch(GAME_BASE_PATH + 'assets/maps/default.json');
     var mapDoc = await res.json();
 
     gi = new GameInstance(gameConfig, 'game');
@@ -720,7 +720,7 @@ var webrtcTransport = (function () {
 
   function switchMap(mapFile) {
     if (role !== 'host' || !gi) return Promise.reject(new Error('only the host can change the map'));
-    return fetch('./assets/maps/' + mapFile)
+    return fetch(GAME_BASE_PATH + 'assets/maps/' + mapFile)
       .then(function (res) { return res.json(); })
       .then(function (mapDoc) {
         gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });

@@ -3,6 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <title>BamBall</title>
+<script>
+  // Captured here, at the very first moment ANY script on this page runs -
+  // before even the first of the 72 deferred <script> tags below, let
+  // alone local/menu.js's history.replaceState() (which only ever runs
+  // later, once a group code is known). Every asset fetch elsewhere in the
+  // codebase (spriteSheetLoader.js, textureBrowser.js, localTransport.js,
+  // webrtcTransport.js, settingsMaker.js) is built from this instead of a
+  // bare relative "./..." path, which used to resolve against whatever
+  // the CURRENT address bar path was - broke (404s across the board, then
+  // a JSON-parse crash trying to read the 404 page itself as a manifest)
+  // the moment that path grew a /group/<code> suffix, since a relative
+  // path has no way to know that suffix isn't really a directory. This
+  // captures the one true base before that suffix can ever exist, so nothing
+  // downstream has to care what the address bar says later. Same "strip
+  // off any trailing filename" logic as local/menu.js's baseGamePath(),
+  // just simpler here since there's nothing to strip yet at this point.
+  window.GAME_BASE_PATH = location.pathname.replace(/[^/]*$/, '');
+</script>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #111; overflow: hidden; font-family: sans-serif; }
   #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }

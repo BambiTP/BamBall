@@ -182,7 +182,7 @@ function mountTexturePackPicker(container, opts) {
     renderTiles();
 
     if (!groupsCache) {
-      fetch('./assets/tileGroups.json').then(function (res) { return res.json(); }).then(function (data) {
+      fetch(GAME_BASE_PATH + 'assets/tileGroups.json').then(function (res) { return res.json(); }).then(function (data) {
         groupsCache = applyLocalPicks(data.groups || []);
         renderTiles();
       }).catch(function () {
@@ -202,7 +202,7 @@ function mountTexturePackPicker(container, opts) {
     openChangeAllConfirm(theme, function (selectedTileIds) {
       var picks = {};
       selectedTileIds.forEach(function (tileId) { picks[tileId] = null; }); // filled in below once coverage is known
-      fetch('./assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (coverage) {
+      fetch(GAME_BASE_PATH + 'assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (coverage) {
         var tiles = coverage[theme] || [];
         var byId = {};
         tiles.forEach(function (t) { byId[t.tileId] = t; });
@@ -301,7 +301,7 @@ function mountTexturePackPicker(container, opts) {
         renderFullPack();
       } else {
         grid.textContent = 'Loading pack…';
-        fetch('./assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (data) {
+        fetch(GAME_BASE_PATH + 'assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (data) {
           themeCoverageCache = data;
           renderFullPack();
         }).catch(function () { grid.textContent = 'Failed to load pack preview.'; });
@@ -334,7 +334,7 @@ function mountTexturePackPicker(container, opts) {
         var img = document.createElement('img');
         img.alt = theme;
         img.loading = 'lazy';
-        img.src = './assets/themePreviews/' + theme + '.png';
+        img.src = GAME_BASE_PATH + 'assets/themePreviews/' + theme + '.png';
         cell.appendChild(img);
         var label = document.createElement('span');
         label.textContent = theme;
@@ -352,7 +352,7 @@ function mountTexturePackPicker(container, opts) {
     renderPreview();
 
     if (!themesCache) {
-      fetch('./assets/themes.json').then(function (res) { return res.json(); }).then(function (data) {
+      fetch(GAME_BASE_PATH + 'assets/themes.json').then(function (res) { return res.json(); }).then(function (data) {
         themesCache = data.themes || [];
         renderGrid();
       }).catch(function () {

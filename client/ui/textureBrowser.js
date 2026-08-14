@@ -438,7 +438,7 @@ function openChangeAllConfirm(theme, onConfirm) {
   m.list.textContent = 'Loading…';
   m.backdrop.classList.remove('hidden');
 
-  fetch('./assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (coverageByTheme) {
+  fetch(GAME_BASE_PATH + 'assets/themeCoverage.json').then(function (res) { return res.json(); }).then(function (coverageByTheme) {
     if (!changeAllConfirmState || changeAllConfirmState.theme !== theme) return; // superseded by a newer pick
 
     var allTiles = coverageByTheme[theme] || [];
@@ -530,7 +530,7 @@ var tileOptionsCache = null;
 function fetchTextureOptionsFor(tileId, sourceTileName) {
   var optionsPromise = (tileOptionsCache
     ? Promise.resolve(tileOptionsCache)
-    : fetch('./assets/tileOptions.json').then(function (res) { return res.json(); }).then(function (data) {
+    : fetch(GAME_BASE_PATH + 'assets/tileOptions.json').then(function (res) { return res.json(); }).then(function (data) {
         tileOptionsCache = data;
         return data;
       })
@@ -604,7 +604,7 @@ var customUploadUrlCache = {};
 function spriteFileUrl(spriteId) {
   var theme = spriteId.split('/')[1] || '';
   if (theme.indexOf('custom-') === 0) return customUploadUrlCache[spriteId] || '';
-  return './assets/sprites/' + spriteId + '.png';
+  return GAME_BASE_PATH + 'assets/sprites/' + spriteId + '.png';
 }
 
 function downloadTexture(spriteId, label) {
