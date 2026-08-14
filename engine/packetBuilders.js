@@ -247,8 +247,12 @@ const packetBuilders = {
     return { type: 'matchEnd', ...data };
   },
 
-  snapshot(delta) {
-    return { type: 'snapshot', updated: delta.updated, removed: delta.removed ?? [] };
+  // immediate: true for an out-of-band, event-triggered push (boost, bomb,
+  // pop, teleport, ...) - see gameInstance.js's pushSnapshotsFor - so the
+  // client can snap straight to it instead of easing, vs. false/omitted
+  // for the routine ~250ms interval tick, which should ease smoothly.
+  snapshot(delta, immediate) {
+    return { type: 'snapshot', updated: delta.updated, removed: delta.removed ?? [], immediate: !!immediate };
   },
 
   // Sent only to the player who picked the powerup up (see outgoing.js) -

@@ -283,11 +283,11 @@ function wireHostEngineEvents() {
     broadcastToOne(playerId, packet);
   });
 
-  gi.emitter.on('snapshot', function (deltas) {
+  gi.emitter.on('snapshot', function (deltas, immediate) {
     for (var id in peers) {
       var entry = peers[id];
       var delta = deltas.get(entry.clientId);
-      if (delta) safeSend(entry, packetBuilders.snapshot(delta));
+      if (delta) safeSend(entry, packetBuilders.snapshot(delta, immediate));
     }
   });
   // replayPlayers ignored - no recorder in this build, see header comment.

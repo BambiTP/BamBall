@@ -120,7 +120,7 @@ var packetApplier = {
 
   snapshot: function (packet) {
     for (var i = 0; i < packet.updated.length; i++) {
-      applySnapshotEntity(packet.updated[i]);
+      applySnapshotEntity(packet.updated[i], packet.immediate);
     }
     var removed = packet.removed || [];
     for (var j = 0; j < removed.length; j++) {
@@ -379,12 +379,12 @@ var packetApplier = {
 // flag-change events; position/velocity reconciliation needs the physics
 // body, so it's a separate call into simulation/entityReconciler.js. Kept
 // as one helper so 'snapshot' reads as a single step per entity.
-function applySnapshotEntity(entity) {
+function applySnapshotEntity(entity, immediate) {
   var player = getPlayer(entity.id);
   if (!player) {
     createPlayer(entity); // also applies flags for the initial state
     return;
   }
   applyEntity(entity); // non-physics fields + flag-change events
-  entityReconciler.reconcilePlayerPosition(player, entity);
+  entityReconciler.reconcilePlayerPosition(player, entity, immediate);
 }

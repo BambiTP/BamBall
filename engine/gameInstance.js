@@ -680,7 +680,11 @@ class GameInstance {
   pushSnapshots() {
     const deltas = this.snapshotFactory.buildAllDeltas();
     if (deltas.size > 0) {
-      this.emitter.emit('snapshot', deltas);
+      // false: this is the regular interval tick (config.snapshotInterval,
+      // ~every 250ms) - routine drift correction, meant to be eased in
+      // smoothly rather than snapped. See pushSnapshotsFor below for the
+      // other case.
+      this.emitter.emit('snapshot', deltas, false);
     }
     // Un-culled, globally-deduplicated equivalent for replay recording -
     // emitted every call regardless of whether the per-viewer path above had
@@ -703,7 +707,15 @@ class GameInstance {
     if (players.length) {
       const deltas = this.snapshotFactory.buildDeltasForPlayers(players);
       if (deltas.size > 0) {
-        this.emitter.emit('snapshot', deltas);
+        // true: this is an out-of-band push triggered by a discrete event
+        // (boost, bomb, pop, flag grab, teleport, respawn, ...) via the
+        // 'update' emit gameHelpers/tileHandlers fire for exactly this
+        // reason - not routine drift, so the client should snap straight
+        // to the new state instead of smoothly easing into it. Easing a
+        // sudden velocity change (a boost, most visibly) looked like the
+        // player was gliding into their new speed instead of actually
+        // being boosted.
+        this.emitter.emit('snapshot', deltas, true);
       }
     }
 

@@ -363,13 +363,13 @@ var webrtcTransport = (function () {
       }
     });
 
-    gi.emitter.on('snapshot', function (deltas) {
+    gi.emitter.on('snapshot', function (deltas, immediate) {
       var localDelta = deltas.get(LOCAL_CLIENT_ID);
-      if (localDelta) packetRouter.dispatch(packetBuilders.snapshot(localDelta));
+      if (localDelta) packetRouter.dispatch(packetBuilders.snapshot(localDelta, immediate));
       for (var id in peers) {
         var entry = peers[id];
         var delta = deltas.get(entry.clientId);
-        if (delta) safeSend(entry, packetBuilders.snapshot(delta));
+        if (delta) safeSend(entry, packetBuilders.snapshot(delta, immediate));
       }
     });
 

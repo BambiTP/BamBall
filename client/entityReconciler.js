@@ -1,17 +1,27 @@
 // entityReconciler.js - server snapshot reconciliation: velocity applies
 // immediately (authoritative), position/angle either snaps (teleport,
-// signaled by the server's snap counter, or a delta past SYNC_SNAP_DISTANCE)
-// or eases in over a few fixed-step ticks. This is simulation logic, not
-// pure state, because it reads/writes the physics body directly - state/
-// gameState.js only tracks the non-physics entity fields (name, team,
-// flags); this module and simulation/loop.js own everything position-
-// related.
+// signaled by the server's snap counter, a delta past SYNC_SNAP_DISTANCE,
+// or an `immediate` packet - see below) or eases in over a few fixed-step
+// ticks. This is simulation logic, not pure state, because it reads/writes
+// the physics body directly - state/gameState.js only tracks the
+// non-physics entity fields (name, team, flags); this module and
+// simulation/loop.js own everything position-related.
+//
+// `immediate` (packetBuilders.js's snapshot(delta, immediate)) is true for
+// an out-of-band, event-triggered push (boost, bomb, pop, teleport, ...)
+// and false for the routine ~250ms interval tick. The two need different
+// treatment: a routine correction is small drift and should ease in
+// smoothly, but a boost's sudden velocity change should be reflected
+// immediately - easing THAT looked like the player was gliding into their
+// new speed over half a second instead of actually being boosted, most
+// visible on remote players (the local player's own prediction is usually
+// already close to correct, so its corrections are small either way).
 
 var SYNC_SNAP_DISTANCE = 5; // tiles - fallback only, the server's snap counter is the real signal
 var STEP_MS = 1000 / 60;
 
 // entity: the wire-format snapshot delta (x/y/a/lx/ly/s may be partial).
-function reconcilePlayerPosition(player, entity) {
+function reconcilePlayerPosition(player, entity, immediate) {
   var now = engineClock.now();
   // Real elapsed time since the LAST correction actually applied, not an
   // assumed broadcast cadence - corrections can arrive faster than any fixed
@@ -57,10 +67,10 @@ function reconcilePlayerPosition(player, entity) {
   // TEMP DEBUG - remove once the teleport bug is found.
   if (window.DEBUG_RECONCILE) {
     console.log('[reconcile]', player.id, 'dist=' + dist.toFixed(3), 'elapsed=' + elapsed,
-      snapRequested ? 'SNAP(counter)' : (dist > SYNC_SNAP_DISTANCE ? 'SNAP(distance)' : 'ease'));
+      snapRequested ? 'SNAP(counter)' : immediate ? 'SNAP(immediate)' : (dist > SYNC_SNAP_DISTANCE ? 'SNAP(distance)' : 'ease'));
   }
 
-  if (snapRequested || dist > SYNC_SNAP_DISTANCE) {
+  if (snapRequested || immediate || dist > SYNC_SNAP_DISTANCE) {
     physicsWorld.setPosition(player.body, tx, ty);
     player.body.SetAngle(ta);
     player.sync = null;

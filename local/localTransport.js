@@ -139,9 +139,9 @@ var localTransport = (function () {
     });
 
     // Snapshots are per-viewer server-side; there's only one viewer here.
-    gi.emitter.on('snapshot', function (deltas) {
+    gi.emitter.on('snapshot', function (deltas, immediate) {
       var delta = deltas.get(localId);
-      if (delta) packetRouter.dispatch(packetBuilders.snapshot(delta));
+      if (delta) packetRouter.dispatch(packetBuilders.snapshot(delta, immediate));
     });
 
     // The un-culled, globally-deduplicated equivalent of 'snapshot' - see
