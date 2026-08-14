@@ -63,6 +63,15 @@
   #createGroupPassword { font-size: 14px; padding: 8px 10px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; width: 220px; box-sizing: border-box; text-align: center; }
   #modeSelectStatus { font-size: 13px; color: #e07a7a; min-height: 16px; }
 
+  /* ---- duplicate-tab prompt: same browser already has this group open
+     in another tab - see local/main.js's 'duplicateDevice:ask' handler. ---- */
+  #duplicateTabModal { position: absolute; inset: 0; background: rgba(0,0,0,0.7); z-index: 550; display: flex; align-items: center; justify-content: center; }
+  #duplicateTabCard { width: 100%; max-width: 340px; background: #181818; border: 1px solid #2a2a2a; border-radius: 10px; padding: 24px; box-sizing: border-box; text-align: center; }
+  #duplicateTabText { color: #ddd; font-size: 14px; line-height: 1.5; margin-bottom: 18px; }
+  #duplicateTabCard button { width: 100%; font-size: 14px; padding: 11px; border: none; border-radius: 6px; cursor: pointer; color: #fff; margin-bottom: 8px; }
+  #duplicateGuestBtn { background: #5588ff; }
+  #duplicateReplaceBtn { background: #a33; margin-bottom: 0; }
+
   /* ---- identity: display name + optional TagPro login, shown above the
      mode buttons - see local/tagproLogin.js. Stays editable even while
      logged in - green text is just a live "this matches your verified
@@ -153,6 +162,17 @@
       </thead>
       <tbody id="groupListRows"><tr class="groupListEmptyRow"><td colspan="4">Loading…</td></tr></tbody>
     </table>
+  </div>
+</div>
+<!-- Shown mid-connect (before #modeSelect ever hides) when this browser
+     already has another tab open in the same group - local/main.js's
+     'duplicateDevice:ask' handler, triggered from webrtcTransport.js's
+     connectSignal on a 'duplicate-device' signaling message. -->
+<div id="duplicateTabModal" class="hidden">
+  <div id="duplicateTabCard">
+    <div id="duplicateTabText">You already have this group open in another tab.</div>
+    <button id="duplicateGuestBtn">Join as Guest</button>
+    <button id="duplicateReplaceBtn">Replace Old Tab</button>
   </div>
 </div>
 <div id="loadingOverlay" class="hidden"><div id="loadingSpinner"></div><div id="loadingText">Loading BamBall…</div></div>

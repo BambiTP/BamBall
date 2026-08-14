@@ -95,6 +95,36 @@ function beginBoot(transport, bootFn) {
   start(bootFn);
 }
 
+// webrtcTransport.js's connectSignal emits 'duplicateDevice:ask' (with a
+// respond(choice) callback) when the signaling server reports this same
+// browser already has another tab connected to the group being joined -
+// see worker/src/roomSignal.js's header comment for the protocol this is
+// answering. Shown right over the mode-select screen, since that's
+// exactly where a Create/Join Group attempt is still in flight at this
+// point (beginBoot() hasn't hidden it yet either way).
+function initDuplicateTabModal() {
+  var modal = document.getElementById('duplicateTabModal');
+  var guestBtn = document.getElementById('duplicateGuestBtn');
+  var replaceBtn = document.getElementById('duplicateReplaceBtn');
+  if (!modal || !guestBtn || !replaceBtn) return;
+
+  appEvents.on('duplicateDevice:ask', function (respond) {
+    modal.classList.remove('hidden');
+
+    function choose(choice) {
+      modal.classList.add('hidden');
+      guestBtn.removeEventListener('click', onGuest);
+      replaceBtn.removeEventListener('click', onReplace);
+      respond(choice);
+    }
+    function onGuest()   { choose('guest'); }
+    function onReplace() { choose('replace'); }
+
+    guestBtn.addEventListener('click', onGuest);
+    replaceBtn.addEventListener('click', onReplace);
+  });
+}
+
 function initModeSelect() {
   var status   = document.getElementById('modeSelectStatus');
   var soloBtn  = document.getElementById('playSoloBtn');
@@ -108,6 +138,7 @@ function initModeSelect() {
   }
 
   initIdentityUI();
+  initDuplicateTabModal();
 
   // Carried across the reload packetApplier.js's 'kicked' handler triggers -
   // this is the first code on the mode-select screen to run afterward.

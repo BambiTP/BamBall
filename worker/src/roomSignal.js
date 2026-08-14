@@ -18,6 +18,19 @@
 //   client -> DO   { type: 'signal', to: <peerId>, data: <SDP/ICE payload> }
 //   client -> DO   { type: 'ban', peerId: <peerId> } - host-only (silently
 //                    ignored from anyone else), see handleMessage
+//   client -> DO   { type: 'resolve-duplicate', choice: 'guest'|'replace' }
+//                    - reply to a duplicate-device prompt, see below
+//   DO -> client   { type: 'duplicate-device' } - sent instead of 'welcome'
+//                    when this connection's ?deviceId= matches one already
+//                    connected to this room (the same browser opening a
+//                    second tab) - the new connection stays paused (no
+//                    'welcome', no further messages) until it replies with
+//                    resolve-duplicate. 'guest' just proceeds normally,
+//                    leaving both connected; 'replace' closes the OLDER
+//                    connection first (its own 'peer-left'/cleanup fires
+//                    from that close, same as any other disconnect) and
+//                    then proceeds. Defaults to 'guest' after 15s if the
+//                    client never answers, rather than hanging forever.
 //   DO -> client   { type: 'welcome', peerId, hostId, peers: [id, ...] }
 //   DO -> client   { type: 'peer-joined', peerId }
 //   DO -> client   { type: 'peer-left', peerId }
@@ -43,6 +56,34 @@ async function sha256Hex(text) {
   return Array.from(new Uint8Array(digest)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
 }
 
+// Pauses a new connection that shares a deviceId with one still connected
+// to this room, asking the CLIENT (not assuming) how to resolve it - see
+// this file's own header comment for the message shapes. Defaults to
+// 'guest' if the client never answers (15s), rather than leaving the
+// connection hanging forever on a client that doesn't understand the
+// message (or a non-browser caller, like node-host, which never sends a
+// deviceId in the first place and so never reaches this at all).
+function waitForDuplicateResolution(ws) {
+  return new Promise(function (resolve) {
+    var done = false;
+    var timeout = setTimeout(function () { finish('guest'); }, 15000);
+    function finish(choice) {
+      if (done) return;
+      done = true;
+      clearTimeout(timeout);
+      ws.removeEventListener('message', onMessage);
+      resolve(choice);
+    }
+    function onMessage(event) {
+      var msg;
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
+      if (msg.type === 'resolve-duplicate' && (msg.choice === 'guest' || msg.choice === 'replace')) finish(msg.choice);
+    }
+    ws.addEventListener('message', onMessage);
+    try { ws.send(JSON.stringify({ type: 'duplicate-device' })); } catch (e) { finish('guest'); }
+  });
+}
+
 export class RoomSignal {
   constructor(state, env) {
     this.state = state;
@@ -56,6 +97,13 @@ export class RoomSignal {
     // can currently see), so there's no case that needs this to survive a
     // hibernation cycle the way bannedIps itself (in storage) does.
     this.ipsByPeerId = new Map();
+    // deviceId -> peerId (currently connected) and its reverse, so a
+    // browser opening a second tab into the same group can be detected -
+    // see waitForDuplicateResolution and the duplicate-device handling in
+    // handleSession. In-memory only, same lifetime as sockets/ipsByPeerId -
+    // meaningless without a live connection to match against.
+    this.peerIdByDevice = new Map();
+    this.deviceByPeerId = new Map();
   }
 
   async fetch(request) {
@@ -83,6 +131,12 @@ export class RoomSignal {
     var password = url.searchParams.get('password') || '';
     var hostName = url.searchParams.get('name') || 'Host'; // only meaningful for role=host, see handleSession
     var ip = request.headers.get('CF-Connecting-IP') || '';
+    // Optional - node-host (no browser, no localStorage) never sends one,
+    // which is fine: the duplicate-device check below just never triggers
+    // for it. A malformed value is treated the same as absent rather than
+    // rejecting the connection over it.
+    var deviceId = url.searchParams.get('deviceId') || null;
+    if (deviceId && !/^[A-Za-z0-9_-]{1,64}$/.test(deviceId)) deviceId = null;
 
     // This DO is never told its own room code any other way - index.js
     // forwards the original /api/signal/:code request unchanged, so it's
@@ -100,10 +154,24 @@ export class RoomSignal {
     var codeMatch = url.pathname.match(/\/api\/signal\/([A-Za-z0-9]+)/);
     this.roomCode = codeMatch ? codeMatch[1].toUpperCase() : null;
 
+    // Deliberately NOT awaited: a WebSocketPair's server side only actually
+    // starts exchanging messages with the real client once this fetch()
+    // call returns the 101 Response below - verified live, the hard way.
+    // handleSession's duplicate-device path needs to receive a reply
+    // message on this exact socket (waitForDuplicateResolution) before it
+    // can finish, so awaiting it here would deadlock: fetch() can't return
+    // until handleSession finishes, handleSession can't finish until it
+    // gets a message, and that message can never arrive because fetch()
+    // hasn't returned yet. Every send/receive handleSession does still
+    // works fine happening after this return - accept() and the listener
+    // registrations inside it all run synchronously before handleSession
+    // hits its first await, well before control gets back here.
     var pair = new WebSocketPair();
     var client = pair[0];
     var server = pair[1];
-    await this.handleSession(server, peerId, role, password, ip, hostName);
+    this.handleSession(server, peerId, role, password, ip, hostName, deviceId).catch(function (err) {
+      try { server.close(1011, 'internal error'); } catch (e) {}
+    });
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -149,7 +217,7 @@ export class RoomSignal {
   // is set once, on the room's actual first claim, and never cleared, so
   // a later reclaim after a disconnect always falls through to the normal
   // "present the existing password" check below instead.
-  async handleSession(ws, peerId, role, password, ip, hostName) {
+  async handleSession(ws, peerId, role, password, ip, hostName, deviceId) {
     ws.accept();
     this.sockets.set(peerId, ws);
     this.ipsByPeerId.set(peerId, ip);
@@ -187,6 +255,30 @@ export class RoomSignal {
         this.sockets.delete(peerId);
         return;
       }
+    }
+
+    // Same browser already has a connection open in this room (a second
+    // tab, most often) - pause and let the CLIENT decide how to resolve
+    // it rather than silently allowing or silently blocking. See this
+    // file's header comment for the message shapes and
+    // waitForDuplicateResolution for the timeout/default. Deliberately
+    // sits after the password/ban checks above (so a wrong password is
+    // rejected outright, never reaching a prompt) and before hostId/
+    // welcome below (so 'replace' can freely close the old connection
+    // first without it having already been counted anywhere).
+    if (deviceId) {
+      var existingPeerId = this.peerIdByDevice.get(deviceId);
+      if (existingPeerId && existingPeerId !== peerId && this.sockets.has(existingPeerId)) {
+        var choice = await waitForDuplicateResolution(ws);
+        if (choice === 'replace') {
+          var oldWs = this.sockets.get(existingPeerId);
+          if (oldWs) oldWs.close(4005, 'replaced by a new tab');
+        }
+        // 'guest' (or a timeout defaulting to it): just fall through and
+        // proceed normally, leaving both connections in place.
+      }
+      this.peerIdByDevice.set(deviceId, peerId);
+      this.deviceByPeerId.set(peerId, deviceId);
     }
 
     if (role === 'host') {
@@ -242,6 +334,14 @@ export class RoomSignal {
     if (!this.sockets.has(peerId)) return; // already handled (close+error can both fire)
     this.sockets.delete(peerId);
     this.ipsByPeerId.delete(peerId);
+    // Only clear peerIdByDevice if it still points at THIS peerId - a
+    // 'replace' choice (see handleSession) closes the OLD connection
+    // after the NEW one has already claimed the device slot, so the old
+    // connection's own belated close event must not delete the new
+    // mapping out from under it.
+    var deviceId = this.deviceByPeerId.get(peerId);
+    this.deviceByPeerId.delete(peerId);
+    if (deviceId && this.peerIdByDevice.get(deviceId) === peerId) this.peerIdByDevice.delete(deviceId);
     this.broadcast({ type: 'peer-left', peerId: peerId }, null);
 
     var hostId = await this.state.storage.get('hostId');

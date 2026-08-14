@@ -59,9 +59,28 @@ var webrtcTransport = (function () {
   var hostPc = null;
   var hostDc = null;
   var joinedApplied = false;
+  var hostLastSeenMs = null; // backs startHostStaleCheck, below
 
   function newPeerId() {
     return 'p' + Math.random().toString(36).slice(2, 10);
+  }
+
+  // Stable per-BROWSER id (unlike peerId, which is fresh every connection) -
+  // localStorage is shared across every tab of the same origin, so this is
+  // how the signaling DO (worker/src/roomSignal.js) can tell "this is the
+  // same browser opening a second tab into this group" apart from "this is
+  // actually a different player" and prompt accordingly. Generated once,
+  // reused forever after.
+  var DEVICE_ID_KEY = 'bamball_device_id';
+  function getDeviceId() {
+    try {
+      var id = localStorage.getItem(DEVICE_ID_KEY);
+      if (!id) {
+        id = (crypto.randomUUID ? crypto.randomUUID() : 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+        localStorage.setItem(DEVICE_ID_KEY, id);
+      }
+      return id;
+    } catch (err) { return null; } // localStorage unavailable (private mode, etc.) - just skip duplicate-device detection
   }
 
   // ---- shared: room code + replay persistence (same as localTransport.js) ----
@@ -106,14 +125,27 @@ var webrtcTransport = (function () {
   function connectSignal(code, wantRole, password, name) {
     myPeerId = newPeerId();
     role = wantRole;
+    var deviceId = getDeviceId();
     var url = SIGNAL_URL + code + '?peerId=' + myPeerId + '&role=' + wantRole
       + (password ? '&password=' + encodeURIComponent(password) : '')
-      + (name ? '&name=' + encodeURIComponent(name) : ''); // host only - seeds roomDirectory.js's hostName, see bootAsHost
+      + (name ? '&name=' + encodeURIComponent(name) : '') // host only - seeds roomDirectory.js's hostName, see bootAsHost
+      + (deviceId ? '&deviceId=' + encodeURIComponent(deviceId) : '');
     signalWs = new WebSocket(url);
 
     signalReady = new Promise(function (resolve, reject) {
       signalWs.addEventListener('message', function onMessage(event) {
         var msg = JSON.parse(event.data);
+        if (msg.type === 'duplicate-device') {
+          // Same browser already has a connection open in this room (see
+          // worker/src/roomSignal.js's header comment) - pause here and
+          // ask the UI (local/main.js's duplicate-tab modal) rather than
+          // silently picking for the player. The DO holds this connection
+          // open with no further messages until it gets a reply.
+          appEvents.emit('duplicateDevice:ask', function (choice) {
+            signalWs.send(JSON.stringify({ type: 'resolve-duplicate', choice: choice }));
+          });
+          return;
+        }
         if (msg.type === 'welcome') {
           signalWs.removeEventListener('message', onMessage);
           resolve(msg);
@@ -230,7 +262,14 @@ var webrtcTransport = (function () {
   function handlePeerJoined(peerId) {
     var clientId = nextClientId++;
     var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    var entry = { pc: pc, dc: null, clientId: clientId, client: { id: clientId, team: 'spectator', muted: false }, account: { display_name: 'Player ' + clientId, authed: false }, ready: false };
+    // lastSeenMs backs the stale-connection sweep (see startStalePeerCheck)
+    // - a WebRTC data channel has no reliable prompt "the other end is
+    // gone" signal the way a clean close does; on a real network drop
+    // (not a clean tab close) the browser's own failure detection can take
+    // a long time, leaving a "ghost" player that looks connected but isn't.
+    // Set at creation (not left undefined) so a peer that never finishes
+    // connecting at all still ages out via the same sweep.
+    var entry = { pc: pc, dc: null, clientId: clientId, client: { id: clientId, team: 'spectator', muted: false }, account: { display_name: 'Player ' + clientId, authed: false }, ready: false, lastSeenMs: Date.now() };
     peers[peerId] = entry;
 
     pc.addEventListener('icecandidate', function (event) {
@@ -258,10 +297,34 @@ var webrtcTransport = (function () {
       entry.dc.send(JSON.stringify(joinedPacket));
     });
     entry.dc.addEventListener('message', function (event) {
+      entry.lastSeenMs = Date.now();
       var packet = JSON.parse(event.data);
       handleOutgoingFor(entry.clientId, entry, packet);
     });
     entry.dc.addEventListener('close', function () { handlePeerLeft(peerId); });
+  }
+
+  // Every ready peer already sends a 'ping' every couple of seconds
+  // (client/ui/hud.js's own RTT probe) even with no player input at all,
+  // so "anything at all heard recently" is a reliable liveness signal, not
+  // just an approximation. STALE_TIMEOUT_MS is generous versus that ~2s
+  // cadence (a few missed beats, not a hair trigger) so a slow tick or one
+  // dropped packet doesn't falsely kick someone.
+  var STALE_TIMEOUT_MS = 10000;
+  var STALE_CHECK_INTERVAL_MS = 3000;
+
+  function startStalePeerCheck() {
+    setInterval(function () {
+      var now = Date.now();
+      for (var id in peers) {
+        var entry = peers[id];
+        if (entry.ready && now - entry.lastSeenMs > STALE_TIMEOUT_MS) {
+          console.warn('[webrtcTransport] peer ' + id + ' (clientId ' + entry.clientId + ') timed out - no message in ' + STALE_TIMEOUT_MS + 'ms');
+          if (entry.pc) entry.pc.close();
+          handlePeerLeft(id);
+        }
+      }
+    }, STALE_CHECK_INTERVAL_MS);
   }
 
   // Every send to a peer's data channel goes through this - a channel can
@@ -538,6 +601,7 @@ var webrtcTransport = (function () {
     packetApplier.applyJoined(joinedPacket);
 
     gi.start();
+    startStalePeerCheck();
     return gi;
   }
 
@@ -563,7 +627,9 @@ var webrtcTransport = (function () {
 
   function wirePeerDataChannel(dc, onJoined, identity) {
     hostDc = dc;
+    hostLastSeenMs = Date.now();
     dc.addEventListener('message', function (event) {
+      hostLastSeenMs = Date.now();
       var packet = JSON.parse(event.data);
       if (!joinedApplied) {
         // First message from the host is always the 'joined' packet
@@ -583,6 +649,38 @@ var webrtcTransport = (function () {
       }
       packetRouter.dispatch(packet);
     });
+    // Previously missing entirely: nothing here ever reacted to the host
+    // vanishing, so a peer whose host disconnected just silently froze -
+    // no error, no way back except manually reloading. Reuses the exact
+    // same "store a reason, reload to a clean mode-select" path
+    // packetApplier.js's own 'kicked' handler already uses.
+    dc.addEventListener('close', function () { handleHostLost(); });
+    dc.addEventListener('error', function () { handleHostLost(); });
+    startHostStaleCheck();
+  }
+
+  function handleHostLost() {
+    try { sessionStorage.setItem('bamball_kicked_reason', 'Lost connection to the host.'); } catch (err) {}
+    location.reload();
+  }
+
+  // Backup for handleHostLost's close/error listeners above: a WebRTC data
+  // channel has no reliable prompt failure signal on a real network drop
+  // (not a clean close) - the browser's own detection can take a long
+  // time. The host already sends this peer a snapshot/message stream
+  // continuously (at minimum its own ~2s ping from client/ui/hud.js), so
+  // "nothing heard in a while" is a reliable enough signal to act on
+  // sooner than waiting for the connection to formally fail.
+  var HOST_STALE_TIMEOUT_MS = 10000;
+  var hostStaleCheckStarted = false;
+  function startHostStaleCheck() {
+    if (hostStaleCheckStarted) return; // wirePeerDataChannel could in principle run more than once
+    hostStaleCheckStarted = true;
+    setInterval(function () {
+      if (hostLastSeenMs !== null && Date.now() - hostLastSeenMs > HOST_STALE_TIMEOUT_MS) {
+        handleHostLost();
+      }
+    }, 3000);
   }
 
   async function bootAsPeer(code, password, identity) {

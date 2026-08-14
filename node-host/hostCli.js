@@ -181,11 +181,15 @@ function banClient(clientId) {
 function handlePeerJoined(peerId) {
   var clientId = ++nextClientId;
   var pc = new wrtc.RTCPeerConnection({ iceServers: ICE_SERVERS });
+  // lastSeenMs backs the stale-connection sweep (see startStalePeerCheck) -
+  // a WebRTC data channel has no reliable prompt "the other end is gone"
+  // signal on a real network drop (not a clean close), so this catches a
+  // "ghost" peer that looks connected but isn't actually there anymore.
   var entry = {
     pc: pc, dc: null, clientId: clientId,
     client: { id: clientId, team: 'spectator', muted: false },
     account: { display_name: 'Player ' + clientId, authed: false },
-    ready: false,
+    ready: false, lastSeenMs: Date.now(),
   };
   peers[peerId] = entry;
 
@@ -211,10 +215,34 @@ function wireHostDataChannel(peerId, entry) {
     log('player joined: ' + describeEntry(entry));
   });
   entry.dc.addEventListener('message', function (event) {
+    entry.lastSeenMs = Date.now();
     var packet = parseMessage(event.data);
     handleOutgoingFor(entry.clientId, entry, packet);
   });
   entry.dc.addEventListener('close', function () { handlePeerLeft(peerId); });
+}
+
+// Every ready peer sends a 'ping' every couple of seconds regardless of
+// player input (client/ui/hud.js's own RTT probe), so "anything at all
+// heard recently" is a reliable liveness signal. STALE_TIMEOUT_MS is
+// generous versus that ~2s cadence - a few missed beats, not a hair
+// trigger - so a slow tick or one dropped packet doesn't falsely kick
+// someone.
+var STALE_TIMEOUT_MS = 10000;
+var STALE_CHECK_INTERVAL_MS = 3000;
+
+function startStalePeerCheck() {
+  setInterval(function () {
+    var now = Date.now();
+    for (var id in peers) {
+      var entry = peers[id];
+      if (entry.ready && now - entry.lastSeenMs > STALE_TIMEOUT_MS) {
+        log('peer ' + id + ' (clientId ' + entry.clientId + ') timed out - no message in ' + STALE_TIMEOUT_MS + 'ms');
+        if (entry.pc) entry.pc.close();
+        handlePeerLeft(id);
+      }
+    }
+  }, STALE_CHECK_INTERVAL_MS);
 }
 
 function safeSend(entry, packet) {
@@ -402,6 +430,7 @@ async function boot() {
   wireHostEngineEvents();
   gi.loadMap(mapDoc);
   gi.start();
+  startStalePeerCheck();
 
   log('');
   log('==================================================');
