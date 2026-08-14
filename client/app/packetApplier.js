@@ -386,5 +386,5 @@ function applySnapshotEntity(entity, immediate) {
     return;
   }
   applyEntity(entity); // non-physics fields + flag-change events
-  entityReconciler.reconcilePlayerPosition(player, entity, immediate);
+  entityReconciler.reconcilePlayerPosition(player, entity, immediate, entity.id === game.myId);
 }

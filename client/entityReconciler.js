@@ -13,15 +13,37 @@
 // treatment: a routine correction is small drift and should ease in
 // smoothly, but a boost's sudden velocity change should be reflected
 // immediately - easing THAT looked like the player was gliding into their
-// new speed over half a second instead of actually being boosted, most
-// visible on remote players (the local player's own prediction is usually
-// already close to correct, so its corrections are small either way).
+// new speed over half a second instead of actually being boosted.
+//
+// The local player is different again, not just "usually already close
+// enough": their own movement is fully, locally predicted every tick (see
+// reconcilePlayerPosition's isLocalPlayer doc comment below), so routine
+// snapshots don't touch them at all - only a forced event (snap counter,
+// `immediate`) or a genuine large desync (SYNC_SNAP_DISTANCE) does. Live
+// jitter with zero boosts in play traced to exactly this: without the
+// isLocalPlayer skip, every routine snapshot pulled the local player's own
+// already-correct position and velocity toward slightly-stale server data,
+// four times a second, forever.
 
 var SYNC_SNAP_DISTANCE = 5; // tiles - fallback only, the server's snap counter is the real signal
 var STEP_MS = 1000 / 60;
 
 // entity: the wire-format snapshot delta (x/y/a/lx/ly/s may be partial).
-function reconcilePlayerPosition(player, entity, immediate) {
+// isLocalPlayer: true for the player this client itself controls - their
+// movement is already advanced every tick by real, zero-latency local
+// input (client/movement.js), so a routine snapshot's x/y/velocity is
+// ALWAYS stale by at least half a round trip by the time it arrives. Every
+// other player on screen has no local input to trust instead, so their
+// snapshot IS the best information available and driving them from it is
+// correct - but blending that same stale data into the local player's own
+// already-correct position on every ~250ms tick was fighting local
+// prediction with a wrong answer, four times a second, forever: a small
+// visible stutter on every routine update, not just on boosts, exactly
+// matching what should be impossible if snapping is reserved for the
+// genuinely discontinuous events (teleport/respawn/tag, all still handled
+// below via snapRequested/immediate - those aren't skipped here, only the
+// routine ease + velocity overwrite is).
+function reconcilePlayerPosition(player, entity, immediate, isLocalPlayer) {
   var now = engineClock.now();
   // Real elapsed time since the LAST correction actually applied, not an
   // assumed broadcast cadence - corrections can arrive faster than any fixed
@@ -40,10 +62,16 @@ function reconcilePlayerPosition(player, entity, immediate) {
 
   var snapRequested = entity.s !== undefined && entity.s !== player.snapCount;
   if (entity.s !== undefined) player.snapCount = entity.s;
+  var forced = snapRequested || immediate; // a genuine discontinuity, not routine drift
 
-  // Server velocity is authoritative - apply directly so prediction between
-  // snapshots starts from the right momentum.
-  if (entity.lx !== undefined || entity.ly !== undefined) {
+  // Server velocity is authoritative for every OTHER player - apply
+  // directly so prediction between snapshots starts from the right
+  // momentum. For the local player, only do this on a forced event: their
+  // velocity is already being driven every tick by real local input
+  // (client/movement.js), so a routine snapshot's velocity is stale the
+  // instant it arrives and overwriting it four times a second fights local
+  // prediction instead of correcting it.
+  if ((!isLocalPlayer || forced) && (entity.lx !== undefined || entity.ly !== undefined)) {
     var vel = physicsWorld.getVelocity(player.body);
     physicsWorld.setVelocity(
       player.body,
@@ -66,16 +94,25 @@ function reconcilePlayerPosition(player, entity, immediate) {
 
   // TEMP DEBUG - remove once the teleport bug is found.
   if (window.DEBUG_RECONCILE) {
-    console.log('[reconcile]', player.id, 'dist=' + dist.toFixed(3), 'elapsed=' + elapsed,
-      snapRequested ? 'SNAP(counter)' : immediate ? 'SNAP(immediate)' : (dist > SYNC_SNAP_DISTANCE ? 'SNAP(distance)' : 'ease'));
+    console.log('[reconcile]', player.id, isLocalPlayer ? '(local)' : '(remote)', 'dist=' + dist.toFixed(3), 'elapsed=' + elapsed,
+      snapRequested ? 'SNAP(counter)' : immediate ? 'SNAP(immediate)' : (dist > SYNC_SNAP_DISTANCE ? 'SNAP(distance)' : (isLocalPlayer ? 'skip(local)' : 'ease')));
   }
 
-  if (snapRequested || immediate || dist > SYNC_SNAP_DISTANCE) {
+  var bigDrift = dist > SYNC_SNAP_DISTANCE; // desync/packet-loss safety net - still worth catching for anyone, local player included
+  if (forced || bigDrift) {
     physicsWorld.setPosition(player.body, tx, ty);
     player.body.SetAngle(ta);
     player.sync = null;
     return;
   }
+
+  // The local player's own small routine drift is left alone entirely -
+  // they're already exactly where their own input put them, and blending
+  // toward stale server data here is pure stutter, not a correction (see
+  // this function's isLocalPlayer doc comment up top). Only genuinely
+  // forced events or a real desync (both handled above, before this point)
+  // still touch the local player at all.
+  if (isLocalPlayer) return;
 
   // Frames to catch up, sized to how long it's actually been since the last
   // correction (a burst of near-simultaneous corrections doesn't demand
