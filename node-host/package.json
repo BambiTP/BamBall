@@ -1,0 +1,15 @@
+{
+  "name": "bambipro-node-host",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Headless, terminal-controlled P2P host for BambiPro - runs the same engine/ authoritative simulation the browser host does, without needing a browser.",
+  "type": "commonjs",
+  "main": "hostCli.js",
+  "scripts": {
+    "start": "node hostCli.js"
+  },
+  "dependencies": {
+    "@roamhq/wrtc": "^0.10.0",
+    "ws": "^8.21.3"
+  }
+}
