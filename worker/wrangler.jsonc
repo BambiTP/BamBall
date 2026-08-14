@@ -6,7 +6,7 @@
   "r2_buckets": [
     {
       "binding": "REPLAYS",
-      "bucket_name": "bambipro-replays"
+      "bucket_name": "bamball-replays"
     }
   ],
   // TAGPRO_LOGIN: short-lived (expirationTtl) state for the in-progress
