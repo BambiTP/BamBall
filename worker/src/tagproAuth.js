@@ -59,20 +59,14 @@ const LOGIN_TTL_SECONDS   = 600; // 10 minutes - plenty for someone to go flip a
 // join rather than assuming a locally-stored identity is still good.
 const TOKEN_MAX_AGE_MS    = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-// tagpro.koalabeast.com/flair's catalog confirms the "Degrees of Kevin
-// Bacon" family's 2-degree entry is "Pencil" ("#2 is a type of pencil" -
-// "Awarded for reaching 2°"), rendered there via CSS class "degree-pencil".
-// That class name is the best available signal for the wire value (this
-// site's other degree flairs all follow the same class-name-as-slug
-// pattern, e.g. degree-bacon for the 6-degree one) but is NOT confirmed
-// against a real profile's actual selectedFlair JSON value - the catalog
-// page is presentation-only and doesn't expose that directly. Before
-// relying on this, equip Pencil on a real account and check that
-// https://tagpro.koalabeast.com/profiles/<that account's id> reports
-// selectedFlair === "degree-pencil" exactly; swap in whatever it actually
-// says otherwise. Deliberately one named constant so that fix stays a
-// one-line change, not a hunt through this file.
-const VERIFICATION_FLAIR_ID = 'degree-pencil';
+// Confirmed live against a real account: equipping "Pencil" (the
+// "Degrees of Kevin Bacon" family's 2-degree entry) and checking
+// https://tagpro.koalabeast.com/profiles/<id> showed selectedFlair ===
+// "degree.pencil" - a DOT, not the hyphen the flair catalog page's own
+// CSS class ("degree-pencil") would suggest. Deliberately one named
+// constant so a future correction stays a one-line change, not a hunt
+// through this file.
+const VERIFICATION_FLAIR_ID = 'degree.pencil';
 
 function isNoFlair(flair) {
   // TagPro's own "no flair" wire value is unconfirmed too - treated as any
