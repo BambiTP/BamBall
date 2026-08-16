@@ -243,6 +243,14 @@ class PhysicsWorld {
     body.SetPosition(new b2Vec2(x, y));
   }
 
+  applyForce(body, x, y) {
+    body.ApplyForce(new b2Vec2(x, y), body.GetWorldCenter());
+  }
+
+  getMass(body) {
+    return body.GetMass();
+  }
+
   getAngle(body) {
     return body.GetAngle();
   }

@@ -61,6 +61,33 @@ var createPhysicsHelpers = function(physicsWorld, gameState, config) {
       }
     },
 
+    // World gravity (config.gravityX/Y, set on the b2World itself) applies to
+    // every dynamic body every step with no per-body opt-out - this Box2D
+    // build predates gravityScale. A dead player is otherwise fully excluded
+    // from everything else that could move them (movePlayers, applyForceFields,
+    // applyExplosion all skip p.dead above), so without this gravity was the
+    // one thing still quietly sinking/drifting a "frozen at their pop
+    // position" dead ball for the whole respawn wait. Same story in
+    // 'pregame': freezeAll(false) there deliberately leaves players able to
+    // walk around before the match starts, but gravity-mode's fall shouldn't
+    // be live yet either. Applying an equal-and-opposite force before the
+    // step (not zeroing vy after) cancels gravity's contribution to THIS
+    // step exactly, so an excluded player's position doesn't even
+    // momentarily nudge from it - ApplyForce is scaled by mass because
+    // Box2D's solver divides back out by mass during integration, same as
+    // how real gravity ends up mass-independent.
+    counterGravity() {
+      if (!config.gravityX && !config.gravityY) return;
+
+      for (const p of gameState.players) {
+        if (!p.body) continue;
+        if (!(p.dead || p.frozen || p.matchFrozen || gameState.state === 'pregame')) continue;
+
+        const mass = physicsWorld.getMass(p.body);
+        physicsWorld.applyForce(p.body, -mass * config.gravityX, -mass * config.gravityY);
+      }
+    },
+
     syncPlayer(player) {
       const pos = physicsWorld.getPosition(player.body);
       const vel = physicsWorld.getVelocity(player.body);

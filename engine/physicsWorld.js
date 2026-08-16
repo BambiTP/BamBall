@@ -166,6 +166,10 @@ makeBody(id, x, y, physicsLookup) {
     body.ApplyImpulse(new b2Vec2(x, y), body.GetWorldCenter());
   }
 
+  applyForce(body, x, y) {
+    body.ApplyForce(new b2Vec2(x, y), body.GetWorldCenter());
+  }
+
   getMass(body) {
     return body.GetMass();
   }

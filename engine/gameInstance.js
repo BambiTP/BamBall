@@ -617,6 +617,7 @@ class GameInstance {
     this.physicsHelpers.applyJumps();
     this.physicsHelpers.movePlayers();
     this.physicsHelpers.applyForceFields();
+    this.physicsHelpers.counterGravity();
     this.physicsWorld.step(this.timeStep);
     this.physicsHelpers.syncPlayers();
     this.matchManager.tick();

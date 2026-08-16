@@ -58,6 +58,25 @@ function applyForceFields(players, wells) {
   }
 }
 
+// Mirrors the server's physicsHelpers.counterGravity - cancels world
+// gravity's contribution to THIS step for a dead or pregame player before
+// physicsWorld.step() integrates it, so prediction doesn't show them
+// sinking/drifting for a frame before the next server snapshot corrects it.
+// See the server copy for why this can't just be a per-body gravityScale.
+function counterGravity(players) {
+  if (!physConfig.gravityX && !physConfig.gravityY) return;
+
+  var pregame = settingsState.matchInfo.state === 'pregame';
+  for (var i = 0; i < players.length; i++) {
+    var p = players[i];
+    if (!p.body) continue;
+    if (!(p.dead || p.matchFrozen || pregame)) continue;
+
+    var mass = physicsWorld.getMass(p.body);
+    physicsWorld.applyForce(p.body, -mass * physConfig.gravityX, -mass * physConfig.gravityY);
+  }
+}
+
 // Writes simulated position/velocity/angle back onto the plain-data player
 // records that render/ reads - the one place physics body state crosses
 // back into state/.

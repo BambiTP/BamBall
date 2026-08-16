@@ -45,6 +45,7 @@ function startPhysicsLoop() {
           applyJumps(game.players);
           movePlayers(game.players);
           applyForceFields(game.players, game.wells);
+          counterGravity(game.players);
           physicsWorld.step(1 / 60);
           syncPlayers(game.players);
         }
