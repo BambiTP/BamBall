@@ -72,6 +72,33 @@ function isValidSettingsName(name) {
   return typeof name === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(name);
 }
 
+// A Fortunate Maps id is interpolated straight into their URL below, so
+// anything that isn't plain digits must never reach that fetch.
+function isValidFortunateMapId(id) {
+  return typeof id === 'string' && /^\d{1,12}$/.test(id);
+}
+
+// Relays fortunatemaps.herokuapp.com's PNG (tile colours) or JSON (gate/
+// portal/switch/spawn wiring) for one map id, with our own CORS headers
+// attached - see this file's header comment for why this can't just be a
+// browser fetch() straight to their site. A Worker's own fetch() has no
+// CORS restriction (that's a browser-only rule) and follows their /kind/id
+// -> /kind/id.ext redirect on its own, so this is a plain relay, not a
+// re-implementation of their routing.
+async function proxyFortunateMaps(kind, id) {
+  if (!isValidFortunateMapId(id)) return json({ error: 'invalid map id' }, 400);
+
+  var upstream = await fetch(FORTUNATE_BASE + '/' + kind + '/' + id);
+  if (!upstream.ok) return json({ error: 'map not found' }, 404);
+
+  var headers = new Headers(corsHeaders());
+  headers.set('Content-Type', kind === 'png' ? 'image/png' : 'application/json');
+  // A given id's content doesn't change once published - safe to cache for
+  // a while without risking a leader seeing a stale edit right after it.
+  headers.set('Cache-Control', 'public, max-age=3600');
+  return new Response(upstream.body, { headers: headers });
+}
+
 // A replay's summary rides in on the client-set X-Replay-Meta header -
 // attacker-suppliable content, not anything the server itself computed -
 // and gets stored forever, then served back verbatim to every visitor of
@@ -321,6 +348,11 @@ export default {
     var settingsFetch = url.pathname.match(/^\/settings\/([A-Za-z0-9_-]+)$/);
     if (request.method === 'GET' && settingsFetch) {
       return handleGetSettings(env, settingsFetch[1]);
+    }
+
+    var fortunateMatch = url.pathname.match(/^\/api\/fortunatemaps\/(\d{1,12})\/(png|json)$/);
+    if (request.method === 'GET' && fortunateMatch) {
+      return proxyFortunateMaps(fortunateMatch[2], fortunateMatch[1]);
     }
 
     return json({ error: 'not found' }, 404);

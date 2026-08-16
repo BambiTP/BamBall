@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@roamhq/wrtc": "^0.10.0",
+    "pngjs": "^7.0.0",
     "ws": "^8.21.3"
   }
 }

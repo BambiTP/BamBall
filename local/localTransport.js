@@ -156,6 +156,7 @@ var localTransport = (function () {
       wallMap: gameState.wallMap,
       wells: gameState.wells,
       mapId: gameState.mapId,
+      mapSource: gameState.mapSource,
       mapName: gameState.mapName,
       mapAuthor: gameState.mapAuthor,
       switches: gameState.switches,
@@ -339,23 +340,21 @@ var localTransport = (function () {
     return gi;
   }
 
-  // Switches the live game to a different bundled map (assets/maps/<file>)
-  // - the Settings Maker's map picker uses this. Reuses the client's
-  // existing 'mapChanged' handler (client/game/app/packetApplier.js)
-  // unchanged: it already tears down every player sprite/body and rebuilds
-  // the renderer from a mapChanged-shaped packet, exactly what a real
-  // server-driven map change does. Players have to rejoin (Join Red/Blue)
-  // after switching, same as the real game.
-  function switchMap(mapFile) {
+  // Switches the live game to a Fortunate Maps id (local/
+  // fortunateMapsImport.js) - the Settings tab's map field uses this.
+  // Reuses the client's existing 'mapChanged' handler (client/app/
+  // packetApplier.js) unchanged: it already tears down every player
+  // sprite/body and rebuilds the renderer from a mapChanged-shaped packet,
+  // exactly what a real server-driven map change does. Players have to
+  // rejoin (Join Red/Blue) after switching, same as the real game.
+  function switchMap(mapId) {
     if (!gi) return Promise.reject(new Error('not booted yet'));
-    return fetch(GAME_BASE_PATH + 'assets/maps/' + mapFile)
-      .then(function (res) { return res.json(); })
-      .then(function (mapDoc) {
-        gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });
-        gi.loadMap(mapDoc);
-        client.team = 'spectator';
-        packetRouter.dispatch(Object.assign({ type: 'mapChanged' }, mapDataFrom(gi.gameState)));
-      });
+    return importFortunateMap(mapId).then(function (mapDoc) {
+      gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });
+      gi.loadMap(mapDoc, { type: 'fortunatemaps', id: String(mapId) });
+      client.team = 'spectator';
+      packetRouter.dispatch(Object.assign({ type: 'mapChanged' }, mapDataFrom(gi.gameState)));
+    });
   }
 
   return {

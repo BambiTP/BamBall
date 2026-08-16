@@ -42,10 +42,9 @@ async function start(bootFn) {
   initHud();
   initJoinUI();
   initMenu();
-  initSettingsFilesUI();
-  // Textures and Settings Maker tabs build their DOM/fetch their data
-  // lazily, the first time you actually open them (see local/menu.js) -
-  // not here at boot, while they're sitting hidden behind the Esc menu.
+  // Textures and Settings tabs build their DOM/fetch their data lazily,
+  // the first time you actually open them (see local/menu.js) - not here
+  // at boot, while they're sitting hidden behind the Esc menu.
 
   var canvas = document.getElementById('viewport');
   renderer = new Renderer(canvas);

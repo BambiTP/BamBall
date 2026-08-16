@@ -35,6 +35,7 @@ const GameInstance = require('../engine/gameInstance.js');
 const gameConfig = require('../engine/gameConfig.js');
 const { packetBuilders, serializePlayer } = require('../engine/packetBuilders.js');
 const TagproAuth = require('../local/tagproAuthLib.js');
+const { importFortunateMap } = require('./fortunateMapsImport.js');
 
 const WORKER_URL = 'https://api.bamball.workers.dev';
 const SIGNAL_URL = WORKER_URL.replace(/^http/, 'ws') + '/api/signal/';
@@ -70,6 +71,7 @@ function mapDataFrom(gameState) {
     wallMap: gameState.wallMap,
     wells: gameState.wells,
     mapId: gameState.mapId,
+    mapSource: gameState.mapSource,
     mapName: gameState.mapName,
     mapAuthor: gameState.mapAuthor,
     switches: gameState.switches,
@@ -616,7 +618,7 @@ function printHelp() {
   log('  start               force-start the match now');
   log('  reset               reset the current match');
   log('  pause / resume      pause/resume the match');
-  log('  map <file>          switch map (file under assets/maps/, e.g. moai2.json)');
+  log('  map <file|id>       switch map (a file under assets/maps/, e.g. moai2.json, or a bare Fortunate Maps id, e.g. 98939)');
   log('  kick <clientId>     kick a player (they can rejoin)');
   log('  ban <clientId>      kick + IP-ban a player');
   log('  mute <clientId>     toggle mute for a player');
@@ -625,11 +627,24 @@ function printHelp() {
   log('  quit                shut down the host and disconnect everyone');
 }
 
-function switchMap(mapFile) {
+// mapArg is either a bundled file under assets/maps/ (the REPL's own
+// `map <file>` command and --map= boot flag - local admin convenience,
+// unrelated to what a leader can do) or a bare Fortunate Maps id (what a
+// connected browser leader's Settings tab always sends now - see
+// local/controlPanel.js / local/fortunateMapsImport.js). Async either way
+// so both call sites (the 'changeMap' packet handler and the REPL command)
+// already just fire-and-forget + log on failure.
+async function switchMap(mapArg) {
+  var isFortunateId = /^\d+$/.test(mapArg);
   var mapDoc;
-  try { mapDoc = loadMapDoc(mapFile); } catch (e) { log('could not load ' + mapFile + ': ' + e.message); return; }
+  try {
+    mapDoc = isFortunateId ? await importFortunateMap(WORKER_URL, mapArg) : loadMapDoc(mapArg);
+  } catch (e) {
+    log('could not load ' + mapArg + ': ' + e.message);
+    return;
+  }
   gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });
-  gi.loadMap(mapDoc);
+  gi.loadMap(mapDoc, isFortunateId ? { type: 'fortunatemaps', id: mapArg } : null);
   for (var id in peers) peers[id].client.team = 'spectator';
   broadcastToPeers(Object.assign({ type: 'mapChanged' }, mapDataFrom(gi.gameState)));
   log('switched to ' + gi.gameState.mapName);
@@ -662,7 +677,7 @@ function startRepl() {
     else if (cmd === 'reset') { gi.matchManager.resetMatch(); log('match reset'); }
     else if (cmd === 'pause') { gi.matchManager.pauseMatch(); log('match paused'); }
     else if (cmd === 'resume') { gi.matchManager.resumeMatch(); log('match resumed'); }
-    else if (cmd === 'map' && arg) switchMap(arg.indexOf('.json') === -1 ? arg + '.json' : arg);
+    else if (cmd === 'map' && arg) switchMap(/^\d+$/.test(arg) || arg.indexOf('.json') !== -1 ? arg : arg + '.json');
     else if (cmd === 'kick' && arg) log(kickClient(Number(arg)) ? 'kicked ' + arg : 'no such player');
     else if (cmd === 'ban' && arg) log(banClient(Number(arg)) ? 'banned ' + arg : 'no such player');
     else if (cmd === 'mute' && arg) {

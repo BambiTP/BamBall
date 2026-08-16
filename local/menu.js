@@ -1,9 +1,8 @@
 // menu.js - the Esc menu: tab switching, and the Teams tab's roster.
-// Textures/Settings Maker/Record & Files are separate files
-// (texturePackPicker.js, settingsMaker.js, settingsFiles.js) that just
-// render into this menu's panels - this file only owns the shell (open/
-// close, tab switching) and the one tab simple enough not to need its own
-// file.
+// Textures/Settings are separate files (texturePackPicker.js,
+// controlPanel.js) that just render into this menu's panels - this file
+// only owns the shell (open/close, tab switching) and the one tab simple
+// enough not to need its own file.
 
 function toggleMenu() {
   document.getElementById('menu').classList.toggle('hidden');
@@ -17,7 +16,6 @@ function toggleMenu() {
 // fetch, physics world setup).
 var lazyTabInit = {
   texturesPanel: function () { mountTexturePackPicker(document.getElementById('texturePackPicker'), { loggedIn: true }); },
-  makerPanel: function () { initSettingsMaker(); },
   controlPanel: function () { initControlPanel(); },
 };
 var lazyTabDone = {};

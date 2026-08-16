@@ -26,6 +26,7 @@ var game = {
   roster: [],
 
   mapId:     null,
+  mapSource: null,
   mapName:   null,
   mapAuthor: null,
 

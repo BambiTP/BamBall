@@ -49,6 +49,7 @@ function seedMapState(packet) {
   game.wallMap   = packet.wallMap;
   game.wells     = packet.wells || [];
   game.mapId     = packet.mapId     !== undefined ? packet.mapId     : null;
+  game.mapSource = packet.mapSource !== undefined ? packet.mapSource : null;
   game.mapName   = packet.mapName   !== undefined ? packet.mapName   : null;
   game.mapAuthor = packet.mapAuthor !== undefined ? packet.mapAuthor : null;
 

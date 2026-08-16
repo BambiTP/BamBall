@@ -576,8 +576,8 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
   // GameInstance, same as everything else here). Deliberately NOT
   // persisted anywhere: this exists for rapid iterate-test-iterate physics
   // tuning within a single session, not as a durable save file - see
-  // engine/officialPresets.js/settingsMaker.js for the "durable, portable"
-  // half of that spectrum.
+  // engine/officialPresets.js and local/controlPanel.js's settings-code
+  // save/load for the "durable, portable" half of that spectrum.
   //
   // Restore leaves flag-carrying alone rather than trying to reconstruct
   // it (gameHelpers.returnFlag puts every flag back home first) - flag

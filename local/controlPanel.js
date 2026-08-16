@@ -1,19 +1,47 @@
-// controlPanel.js - the Control tab: live physics/match settings (edit as
-// many as you want, one Apply button sends everything at once), quick map
-// change, and in-memory save states. Leader-only - menu.js hides the whole
+// controlPanel.js - the Settings tab: the one place a leader configures a
+// match, live. Official one-click presets, a deterministic settings code
+// (save the current configuration, or load someone else's by pasting their
+// code back in), a Fortunate Maps id for the map, live physics/match
+// settings (edit as many as you want, one Apply button sends everything at
+// once), and in-memory save states. Leader-only - menu.js hides the whole
 // tab and its button otherwise (renderMatchControls), and every action here
 // is also leader-gated server-side (webrtcTransport.js/hostCli.js/
 // localTransport.js), so this file never has to duplicate that check - a
 // rejected action just shows the 'error' packet's message like everything
 // else does.
 //
-// Differs from settingsMaker.js (which authors a portable preset file from
-// the schema's DEFAULTS, downloaded/PUT as JSON) in what it edits, not how:
-// this tab has no file concept at all - it edits settingsState.physics /
-// settingsState.matchInfo.settings, the room's real running values, and
-// Apply sends the diff straight to matchManager via actions.updatePhysics/
-// updateSettings. Same buildSettingsPanel/collectChangedSettings machinery
-// (client/ui/schemaForm.js) either way.
+// Edits settingsState.physics / settingsState.matchInfo.settings, the
+// room's real running values - there's no separate "authored file" concept
+// here. Apply sends the diff straight to matchManager via
+// actions.updatePhysics/updateSettings; presets and settings codes apply
+// immediately the same way. Same buildSettingsPanel/collectChangedSettings
+// machinery (client/ui/schemaForm.js) throughout.
+
+// Recursively sorts object keys before JSON.stringify-ing, so the same
+// settings always produce the same string (and therefore the same code)
+// regardless of the order keys happened to land in an object.
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+  var keys = Object.keys(value).sort();
+  return '{' + keys.map(function (k) { return JSON.stringify(k) + ':' + stableStringify(value[k]); }).join(',') + '}';
+}
+
+// First 10 hex chars of a SHA-256 over the canonical settings string -
+// deterministic (same configuration always yields the same code, so
+// PUT-ing it to the content-addressed /api/settings/:code store is
+// idempotent) and short enough to read/paste by hand. SubtleCrypto needs
+// no library and is already assumed available elsewhere in this codebase
+// (see worker/src/index.js's crypto.getRandomValues).
+function hashSettingsCode(bundle) {
+  var bytes = new TextEncoder().encode(stableStringify(bundle));
+  return crypto.subtle.digest('SHA-256', bytes).then(function (digest) {
+    var hex = Array.prototype.map.call(new Uint8Array(digest), function (b) {
+      return (b < 16 ? '0' : '') + b.toString(16);
+    }).join('');
+    return hex.slice(0, 10);
+  });
+}
 
 function initControlPanel() {
   // ---- live physics + match settings ------------------------------------
@@ -56,7 +84,76 @@ function initControlPanel() {
     buildForms(); // rebuild from the just-applied values, ready for the next round of edits
   });
 
+  // A preset/code bundle is { physics?, match?, mapId? } - applies whatever
+  // it has immediately (unlike the manual-edit forms above, which wait for
+  // Apply), then rebuilds the forms from the result, same as Apply does.
+  function applyBundle(bundle) {
+    if (!bundle) return;
+    if (bundle.mapId)   actions.changeMap(bundle.mapId);
+    if (bundle.physics) actions.updatePhysics(bundle.physics);
+    if (bundle.match)   actions.updateSettings(bundle.match);
+    buildForms();
+  }
+
+  // ---- official presets ---------------------------------------------------
+
+  var presetRow = document.getElementById('controlPresetRow');
+  (OfficialPresets.OFFICIAL_PRESETS || []).forEach(function (preset) {
+    var btn = document.createElement('button');
+    btn.className = 'menuBtn';
+    btn.textContent = preset.name;
+    btn.addEventListener('click', function () { applyBundle(preset.settings); });
+    presetRow.appendChild(btn);
+  });
+
+  // ---- settings code --------------------------------------------------------
+  // Content-addressed: the code is a hash of the settings themselves (see
+  // stableStringify/hashSettingsCode above), not a leader-chosen name, so
+  // saving the same configuration twice always yields the same code and a
+  // PUT to it is always a safe no-op overwrite.
+
+  var codeStatus     = document.getElementById('controlCodeStatus');
+  var loadCodeInput  = document.getElementById('controlLoadCodeInput');
+
+  document.getElementById('controlGetCodeBtn').addEventListener('click', function () {
+    var bundle = {
+      physics: settingsState.physics,
+      match:   settingsState.matchInfo.settings,
+      mapId:   game.mapId,
+    };
+    codeStatus.textContent = 'Computing code…';
+    var code;
+    hashSettingsCode(bundle).then(function (computed) {
+      code = computed;
+      codeStatus.textContent = 'Saving…';
+      return fetch(activeTransport.workerUrl + '/api/settings/' + code, {
+        method: 'PUT',
+        body: JSON.stringify(bundle),
+      });
+    }).then(function (res) {
+      return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (result) {
+      if (!result.ok) { codeStatus.textContent = 'Failed: ' + (result.data.error || 'unknown error'); return; }
+      codeStatus.textContent = 'Code: ' + code;
+    }).catch(function () { codeStatus.textContent = 'Failed to reach the server.'; });
+  });
+
+  document.getElementById('controlLoadCodeBtn').addEventListener('click', function () {
+    var code = loadCodeInput.value.trim();
+    if (!code) return;
+    codeStatus.textContent = 'Loading…';
+    fetch(activeTransport.workerUrl + '/settings/' + encodeURIComponent(code))
+      .then(function (res) { if (!res.ok) throw new Error('not found'); return res.json(); })
+      .then(function (bundle) {
+        applyBundle(bundle);
+        codeStatus.textContent = 'Loaded ' + code + '.';
+      })
+      .catch(function (err) { codeStatus.textContent = 'Failed to load: ' + err.message; });
+  });
+
   // ---- map ----------------------------------------------------------------
+  // Fortunate Maps only - see local/fortunateMapsImport.js. mapIdInput
+  // takes a bare Fortunate Maps id, e.g. "98939".
 
   var mapNameEl   = document.getElementById('controlMapName');
   var mapIdInput  = document.getElementById('controlMapId');
@@ -72,11 +169,10 @@ function initControlPanel() {
   });
 
   document.getElementById('controlMapChangeBtn').addEventListener('click', function () {
-    var file = mapIdInput.value.trim();
-    if (!file) return;
-    if (file.indexOf('.json') === -1) file += '.json';
-    actions.changeMap(file);
-    mapStatus.textContent = 'Loading ' + file + '…';
+    var id = mapIdInput.value.trim();
+    if (!id) return;
+    actions.changeMap(id);
+    mapStatus.textContent = 'Loading map ' + id + '…';
   });
 
   // ---- save states ----------------------------------------------------------

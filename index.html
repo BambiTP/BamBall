@@ -5,11 +5,11 @@
 <title>BamBall</title>
 <script>
   // Captured here, at the very first moment ANY script on this page runs -
-  // before even the first of the 72 deferred <script> tags below, let
+  // before even the first of the deferred <script> tags below, let
   // alone local/menu.js's history.replaceState() (which only ever runs
   // later, once a group code is known). Every asset fetch elsewhere in the
   // codebase (spriteSheetLoader.js, textureBrowser.js, localTransport.js,
-  // webrtcTransport.js, settingsMaker.js) is built from this instead of a
+  // webrtcTransport.js) is built from this instead of a
   // bare relative "./..." path, which used to resolve against whatever
   // the CURRENT address bar path was - broke (404s across the board, then
   // a JSON-parse crash trying to read the 404 page itself as a manifest)
@@ -305,10 +305,8 @@
   <div id="menuCloseHint">Esc to close</div>
   <div id="menuTabs">
     <button class="menuTabBtn active" data-tab="teamsPanel">Teams</button>
-    <button class="menuTabBtn" data-tab="controlPanel">Control</button>
+    <button class="menuTabBtn" data-tab="controlPanel">Settings</button>
     <button class="menuTabBtn" data-tab="texturesPanel">Textures</button>
-    <button class="menuTabBtn" data-tab="makerPanel">Settings Maker</button>
-    <button class="menuTabBtn" data-tab="recordPanel">Files</button>
   </div>
   <div id="menuPanels">
     <div id="teamsPanel" class="menuPanel">
@@ -344,17 +342,33 @@
 
     <!-- Leader-only, same gate as #matchControls - see local/controlPanel.js
          and local/menu.js's renderMatchControls (also toggles this tab
-         button). Settings load from the room's live values but do NOT
-         apply as you type - edit as many as you want, then one Apply
-         button sends everything at once. No file/JSON concept anywhere in
-         here on purpose - that's settingsMaker.js's job (portable preset
-         authoring); this tab is just "change what's running right now." -->
+         button). The manual physics/match forms load from the room's live
+         values but do NOT apply as you type - edit as many as you want,
+         then one Apply button sends everything at once. Presets and
+         settings codes apply immediately instead. -->
     <div id="controlPanel" class="menuPanel hidden">
+      <div class="makerRow">
+        <h4>Presets</h4>
+        <div class="controlRow" id="controlPresetRow"></div>
+      </div>
+
+      <div class="makerRow">
+        <h4>Settings Code</h4>
+        <div class="controlRow">
+          <button class="menuBtn" id="controlGetCodeBtn">Get Code for Current Settings</button>
+          <span class="fileStatus" id="controlCodeStatus"></span>
+        </div>
+        <div class="controlRow">
+          <input type="text" id="controlLoadCodeInput" placeholder="paste a settings code">
+          <button class="menuBtn" id="controlLoadCodeBtn">Load</button>
+        </div>
+      </div>
+
       <div class="makerRow">
         <h4>Map</h4>
         <div id="controlMapName" class="fileStatus"></div>
         <div class="controlRow">
-          <input type="text" id="controlMapId" placeholder="map file, e.g. wallaby.json">
+          <input type="text" id="controlMapId" placeholder="Fortunate Maps id, e.g. 98939">
           <button class="menuBtn" id="controlMapChangeBtn">Load</button>
         </div>
         <div class="fileStatus" id="controlMapStatus"></div>
@@ -388,48 +402,6 @@
     <div id="texturesPanel" class="menuPanel hidden">
       <div id="texturePackPicker"></div>
     </div>
-
-    <div id="makerPanel" class="menuPanel hidden">
-      <div class="makerRow">
-        <label for="makerMapSelect">Map</label>
-        <select id="makerMapSelect"></select>
-      </div>
-      <div class="makerRow">
-        <h4>Physics</h4>
-        <div id="makerPhysicsSubTabs"></div>
-        <div id="makerPhysicsRows"></div>
-      </div>
-      <div class="makerRow">
-        <h4>Match</h4>
-        <div id="makerMatchRows"></div>
-      </div>
-      <div class="makerRow">
-        <label for="makerLoadSelect">Load a saved file</label>
-        <select id="makerLoadSelect"><option value="">Load from server…</option></select>
-      </div>
-      <div class="makerRow">
-        <label for="makerFileName">Save as (name for the shareable link)</label>
-        <input type="text" id="makerFileName" placeholder="e.g. my-fun-mode">
-      </div>
-      <button class="menuBtn" id="makerDownloadBtn">Download File</button>
-      <button class="menuBtn" id="makerUploadBtn">Save to Server</button>
-      <div class="fileStatus" id="makerStatus"></div>
-    </div>
-
-    <div id="recordPanel" class="menuPanel hidden">
-      <div class="settingsSlot">
-        <h4>Pregame Settings File</h4>
-        <label for="pregameSettingsFile">JSON: { physics?, match? } - applies immediately</label>
-        <input type="file" id="pregameSettingsFile" accept="application/json">
-        <div class="fileStatus" id="pregameSettingsStatus"></div>
-      </div>
-      <div class="settingsSlot">
-        <h4>Game Settings File</h4>
-        <label for="gameSettingsFile">Applies the moment the match goes live</label>
-        <input type="file" id="gameSettingsFile" accept="application/json">
-        <div class="fileStatus" id="gameSettingsStatus"></div>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -449,6 +421,7 @@
 <script src="engine/tiles/physicsData.js" defer></script>
 <script src="engine/settingsSchema.js" defer></script>
 <script src="engine/matchSettings.js" defer></script>
+<script src="engine/officialPresets.js" defer></script>
 <script src="engine/gameState.js" defer></script>
 <script src="engine/physicsWorld.js" defer></script>
 <script src="engine/snapshotFactory.js" defer></script>
@@ -461,6 +434,7 @@
 <script src="engine/physicsHelpers.js" defer></script>
 <script src="engine/mapWiring.js" defer></script>
 <script src="engine/tiles/mapFormat.js" defer></script>
+<script src="engine/tiles/mapLoader.js" defer></script>
 <script src="engine/tiles/tileHandlers.js" defer></script>
 <script src="engine/tiles/tileLogic.js" defer></script>
 <script src="engine/matchManager.js" defer></script>
@@ -513,10 +487,9 @@
 <script src="local/localTransport.js" defer></script>
 <script src="local/webrtcTransport.js" defer></script>
 <script src="local/activeTransport.js" defer></script>
+<script src="local/fortunateMapsImport.js" defer></script>
 <script src="local/joinUI.js" defer></script>
 <script src="local/menu.js" defer></script>
-<script src="local/settingsFiles.js" defer></script>
-<script src="local/settingsMaker.js" defer></script>
 <script src="local/controlPanel.js" defer></script>
 <script src="local/tagproLogin.js" defer></script>
 <script src="local/main.js" defer></script>

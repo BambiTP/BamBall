@@ -107,6 +107,7 @@ var webrtcTransport = (function () {
       wallMap: gameState.wallMap,
       wells: gameState.wells,
       mapId: gameState.mapId,
+      mapSource: gameState.mapSource,
       mapName: gameState.mapName,
       mapAuthor: gameState.mapAuthor,
       switches: gameState.switches,
@@ -905,20 +906,20 @@ var webrtcTransport = (function () {
   }
 
   // ---- shared map switching (host only - matches localTransport.js) ------
+  // mapId is a Fortunate Maps id (see local/fortunateMapsImport.js) - the
+  // Settings tab's only way to pick a map now.
 
-  function switchMap(mapFile) {
+  function switchMap(mapId) {
     if (role !== 'host' || !gi) return Promise.reject(new Error('only the host can change the map'));
-    return fetch(GAME_BASE_PATH + 'assets/maps/' + mapFile)
-      .then(function (res) { return res.json(); })
-      .then(function (mapDoc) {
-        gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });
-        gi.loadMap(mapDoc);
-        hostClient.team = 'spectator';
-        for (var id in peers) peers[id].client.team = 'spectator';
-        var packet = Object.assign({ type: 'mapChanged' }, mapDataFrom(gi.gameState));
-        packetRouter.dispatch(packet);
-        broadcastToPeers(packet);
-      });
+    return importFortunateMap(mapId).then(function (mapDoc) {
+      gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });
+      gi.loadMap(mapDoc, { type: 'fortunatemaps', id: String(mapId) });
+      hostClient.team = 'spectator';
+      for (var id in peers) peers[id].client.team = 'spectator';
+      var packet = Object.assign({ type: 'mapChanged' }, mapDataFrom(gi.gameState));
+      packetRouter.dispatch(packet);
+      broadcastToPeers(packet);
+    });
   }
 
   return {
