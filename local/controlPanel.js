@@ -2,20 +2,19 @@
 // match, live. Official one-click presets, a deterministic settings code
 // (save the current configuration, or load someone else's by pasting their
 // code back in), a Fortunate Maps id for the map, live physics/match
-// settings (edit as many as you want, one Apply button sends everything at
-// once), and in-memory save states. Leader-only - menu.js hides the whole
-// tab and its button otherwise (renderMatchControls), and every action here
-// is also leader-gated server-side (webrtcTransport.js/hostCli.js/
-// localTransport.js), so this file never has to duplicate that check - a
-// rejected action just shows the 'error' packet's message like everything
-// else does.
+// settings, and in-memory save states. Leader-only - menu.js hides the
+// whole tab and its button otherwise (renderMatchControls), and every
+// action here is also leader-gated server-side (webrtcTransport.js/
+// hostCli.js/localTransport.js), so this file never has to duplicate that
+// check - a rejected action just shows the 'error' packet's message like
+// everything else does.
 //
 // Edits settingsState.physics / settingsState.matchInfo.settings, the
 // room's real running values - there's no separate "authored file" concept
-// here. Apply sends the diff straight to matchManager via
-// actions.updatePhysics/updateSettings; presets and settings codes apply
-// immediately the same way. Same buildSettingsPanel/collectChangedSettings
-// machinery (client/ui/schemaForm.js) throughout.
+// here, and no Apply-and-batch step either: a preset, a settings code, and
+// a single field (client/ui/schemaForm.js's buildSettingRow onChange) all
+// apply the instant they fire, straight to matchManager via
+// actions.updatePhysics/updateSettings.
 
 // Recursively sorts object keys before JSON.stringify-ing, so the same
 // settings always produce the same string (and therefore the same code)
@@ -45,54 +44,53 @@ function hashSettingsCode(bundle) {
 
 function initControlPanel() {
   // ---- live physics + match settings ------------------------------------
+  // No Apply button, no "edit a bunch then commit" step - every field
+  // applies itself the instant it changes (buildSettingRow's onChange, see
+  // client/ui/schemaForm.js), straight to matchManager via
+  // actions.updatePhysics/updateSettings. Since nothing here ever sits in
+  // an "edited but not yet sent" state, it's also always safe to rebuild
+  // the whole form from settingsState the moment ANYTHING changes it -
+  // this leader's own edit, another leader's, a preset, or a settings-code
+  // load - so the display never has a stale value sitting in it.
 
   var physRows  = document.getElementById('controlPhysicsRows');
   var physTabs  = document.getElementById('controlPhysicsSubTabs');
   var matchRows = document.getElementById('controlMatchRows');
-  var applyBtn  = document.getElementById('controlApplySettingsBtn');
   var status    = document.getElementById('controlSettingsStatus');
 
-  var lastPhysics = {};
-  var lastMatch   = {};
+  function onPhysicsFieldChange(key, value) {
+    var partial = {};
+    partial[key] = value;
+    actions.updatePhysics(partial);
+    status.textContent = 'Applied ' + key + '.';
+  }
 
-  // Builds once, from whatever's live right now - deliberately NOT
-  // refreshed on every physics:changed/matchInfo:changed while this tab is
-  // open. Auto-refreshing while a leader has half-edited a dozen fields
-  // would either yank their edits or silently diff against a moved target;
-  // reopening the tab (or applying, which rebuilds from the confirmed
-  // result below) is the refresh point instead.
+  function onMatchFieldChange(key, value) {
+    var partial = {};
+    partial[key] = value;
+    actions.updateSettings(partial);
+    status.textContent = 'Applied ' + key + '.';
+  }
+
   function buildForms() {
-    lastPhysics = Object.assign({}, settingsState.physics);
-    lastMatch   = Object.assign({}, settingsState.matchInfo.settings);
-    buildSettingsPanel(physRows, 'physics', lastPhysics, physTabs);
-    buildSettingsPanel(matchRows, 'match', lastMatch);
+    buildSettingsPanel(physRows, 'physics', settingsState.physics, physTabs, onPhysicsFieldChange);
+    buildSettingsPanel(matchRows, 'match', settingsState.matchInfo.settings, null, onMatchFieldChange);
   }
 
   if (settingsState.settingsSchema) buildForms();
   else settingsEvents.on('schema:loaded', buildForms);
-
-  applyBtn.addEventListener('click', function () {
-    var physResult  = collectChangedSettings(physRows, 'physics', lastPhysics);
-    var matchResult = collectChangedSettings(matchRows, 'match', lastMatch);
-
-    if (!physResult.changed && !matchResult.changed) { status.textContent = 'Nothing changed.'; return; }
-
-    if (physResult.changed)  actions.updatePhysics(physResult.settings);
-    if (matchResult.changed) actions.updateSettings(matchResult.settings);
-
-    status.textContent = 'Applied for everyone.';
-    buildForms(); // rebuild from the just-applied values, ready for the next round of edits
-  });
+  settingsEvents.on('physics:changed', buildForms);
+  settingsEvents.on('matchInfo:changed', buildForms);
 
   // A preset/code bundle is { physics?, match?, mapId? } - applies whatever
-  // it has immediately (unlike the manual-edit forms above, which wait for
-  // Apply), then rebuilds the forms from the result, same as Apply does.
+  // it has immediately, same mechanism as a single field's onChange above.
+  // The forms above refresh on their own via the physics:changed/
+  // matchInfo:changed subscriptions once these round-trip.
   function applyBundle(bundle) {
     if (!bundle) return;
     if (bundle.mapId)   actions.changeMap(bundle.mapId);
     if (bundle.physics) actions.updatePhysics(bundle.physics);
     if (bundle.match)   actions.updateSettings(bundle.match);
-    buildForms();
   }
 
   // ---- official presets ---------------------------------------------------

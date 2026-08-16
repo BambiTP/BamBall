@@ -1,11 +1,9 @@
-// schemaForm.js - generic settings-panel builder shared by
-// ui/matchSettingsPanel.js and ui/groupSettingsPanel.js. Every row is
-// driven entirely by settingsState.settingsSchema (sent once by the
-// server) - a new setting added server-side needs zero new code here.
-// This is the ONE implementation of the schema->form logic; the old
-// ui.js had this generic already, but nothing else in this file duplicates
-// it, unlike the old client's separate near-identical per-panel code paths
-// for some of the surrounding chrome.
+// schemaForm.js - generic settings-panel builder used by local/
+// controlPanel.js's Settings tab. Every row is driven entirely by
+// settingsState.settingsSchema (sent once by the server) - a new setting
+// added server-side needs zero new code here. Each row applies itself the
+// moment it changes (buildSettingRow's onChange) - there's no separate
+// collect-the-diff-and-Apply step to duplicate per panel.
 
 function schemaList(scope) {
   return (settingsState.settingsSchema && settingsState.settingsSchema[scope]) || [];
@@ -50,7 +48,28 @@ function formatKey(key) {
   return key.replace(/([A-Z])/g, ' $1').replace(/^./, function (c) { return c.toUpperCase(); });
 }
 
-function buildSettingRow(scope, key, values) {
+// Reads one input's current value back out in stored (not display) units -
+// e.g. an empty string on a nullable field is `null`, a scaled field is
+// multiplied back up. Returns undefined for a not-yet-finished number entry
+// (an in-progress "-" or "" the browser hasn't rejected yet), which callers
+// must treat as "no change to apply."
+function readInputValue(scope, key, input) {
+  var entry = schemaEntryFor(scope, key);
+
+  if (input.type === 'checkbox') return input.checked;
+  if (entry && entry.type === 'enum') return input.value;
+
+  var rawStr = input.value.trim();
+  if (entry && entry.nullable && rawStr === '') return null;
+  var value = fromDisplayValue(entry, Number(rawStr));
+  return isFinite(value) ? value : undefined;
+}
+
+// onChange(key, value), if given, fires the moment this one field commits
+// (a checkbox/select's 'change', or a number field's 'change' - i.e. on
+// blur/Enter, not every keystroke) - a leader edits a field and it applies
+// immediately, no separate Apply step for the per-field case.
+function buildSettingRow(scope, key, values, onChange) {
   var entry = schemaEntryFor(scope, key);
   var row = document.createElement('label');
   row.className = 'settingRow';
@@ -84,6 +103,13 @@ function buildSettingRow(scope, key, values) {
   input.setAttribute('data-key', key);
   row.appendChild(input);
 
+  if (onChange) {
+    input.addEventListener('change', function () {
+      var value = readInputValue(scope, key, input);
+      if (value !== undefined) onChange(key, value);
+    });
+  }
+
   return row;
 }
 
@@ -92,7 +118,7 @@ function buildSettingRow(scope, key, values) {
 // without it (Match panel), categories render as inline headers. Anything
 // not mentioned by a category still renders, so a new server setting is
 // never silently dropped.
-function buildSettingsPanel(rowsEl, scope, values, subTabsEl) {
+function buildSettingsPanel(rowsEl, scope, values, subTabsEl, onChange) {
   rowsEl.textContent = '';
 
   var shown = {};
@@ -113,7 +139,7 @@ function buildSettingsPanel(rowsEl, scope, values, subTabsEl) {
 
     for (var i = 0; i < keys.length; i++) {
       shown[keys[i]] = true;
-      var row = buildSettingRow(scope, keys[i], values);
+      var row = buildSettingRow(scope, keys[i], values, onChange);
       if (subTabsEl) row.setAttribute('data-category', catName);
       rowsEl.appendChild(row);
     }
@@ -122,7 +148,7 @@ function buildSettingsPanel(rowsEl, scope, values, subTabsEl) {
   var hasOther = false;
   for (var key in values) {
     if (shown[key]) continue;
-    var extraRow = buildSettingRow(scope, key, values);
+    var extraRow = buildSettingRow(scope, key, values, onChange);
     if (subTabsEl) {
       extraRow.setAttribute('data-category', 'Other');
       hasOther = true;
@@ -167,47 +193,3 @@ function buildCategorySubTabs(subTabsEl, rowsEl, catNames) {
   showCategory(activePhysicsCategory);
 }
 
-// Only includes keys whose (converted) value differs from lastValues, so
-// untouched fields never trip server validation. Empty-string on a
-// nullable field means "clear it".
-function collectChangedSettings(rowsEl, scope, lastValues) {
-  var settings = {};
-  var changed = false;
-
-  var inputs = rowsEl.querySelectorAll('[data-key]');
-  for (var i = 0; i < inputs.length; i++) {
-    var key = inputs[i].getAttribute('data-key');
-    var entry = schemaEntryFor(scope, key);
-
-    if (inputs[i].type === 'checkbox') {
-      if (inputs[i].checked !== lastValues[key]) {
-        settings[key] = inputs[i].checked;
-        changed = true;
-      }
-      continue;
-    }
-
-    if (entry && entry.type === 'enum') {
-      if (inputs[i].value !== lastValues[key]) {
-        settings[key] = inputs[i].value;
-        changed = true;
-      }
-      continue;
-    }
-
-    var rawStr = inputs[i].value.trim();
-    var value;
-    if (entry && entry.nullable && rawStr === '') {
-      value = null;
-    } else {
-      value = fromDisplayValue(entry, Number(rawStr));
-      if (!isFinite(value)) continue;
-    }
-    if (value !== lastValues[key]) {
-      settings[key] = value;
-      changed = true;
-    }
-  }
-
-  return { settings: settings, changed: changed };
-}

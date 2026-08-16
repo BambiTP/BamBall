@@ -232,6 +232,7 @@
   .settingsSlot { margin-bottom: 14px; }
   .settingsSlot h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
   .fileStatus { font-size: 11px; color: var(--text-dim); min-height: 14px; }
+  .controlHint { font-size: 11px; font-weight: normal; color: var(--text-dim); text-transform: none; letter-spacing: normal; }
   /* Outlined, not filled - a flat gray fill is the single most "generic
      web app" tell there is. An outline that lights up to the accent color
      on hover reads as a labeled control being armed, and costs nothing in
@@ -342,10 +343,10 @@
 
     <!-- Leader-only, same gate as #matchControls - see local/controlPanel.js
          and local/menu.js's renderMatchControls (also toggles this tab
-         button). The manual physics/match forms load from the room's live
-         values but do NOT apply as you type - edit as many as you want,
-         then one Apply button sends everything at once. Presets and
-         settings codes apply immediately instead. -->
+         button). Everything here applies instantly - a preset click, a
+         settings-code load, or a single field commit (change a value,
+         click/tab away) all go straight to matchManager, no separate
+         Apply step anywhere. -->
     <div id="controlPanel" class="menuPanel hidden">
       <div class="makerRow">
         <h4>Presets</h4>
@@ -375,16 +376,13 @@
       </div>
 
       <div class="makerRow">
-        <h4>Physics</h4>
+        <h4>Physics <span class="controlHint">(applies instantly - change a value, click away, it's live)</span></h4>
         <div id="controlPhysicsSubTabs"></div>
         <div id="controlPhysicsRows"></div>
       </div>
       <div class="makerRow">
-        <h4>Match</h4>
+        <h4>Match <span class="controlHint">(applies instantly)</span></h4>
         <div id="controlMatchRows"></div>
-      </div>
-      <div class="makerRow">
-        <button class="menuBtn" id="controlApplySettingsBtn">Apply Settings</button>
         <span class="fileStatus" id="controlSettingsStatus"></span>
       </div>
 
