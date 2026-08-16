@@ -206,17 +206,74 @@ var webrtcTransport = (function () {
       if (player) gi.gameHelpers.removePlayer(clientId);
     }
     delete peers[peerId];
+    broadcastRoster();
   }
 
-  // ---- host moderation: kick + mute (room owner only, gated in the UI by
-  // role() === 'host' - these are no-ops with nothing to find if a peer or
-  // solo player ever called them, since `peers` is host-only state) --------
+  // ---- host moderation: kick/mute/ban + leader promotion ------------------
+  //
+  // Two roles above plain player, both host-only concepts (never touch
+  // gameState - "leader" here is who gets to call these functions, not
+  // anything the engine or other players' physics prediction needs to know):
+  //   MAIN LEADER - always LOCAL_CLIENT_ID (whoever is hosting this room).
+  //     Every permission below, permanently, and can't be kicked/banned/
+  //     muted/demoted by anyone (see the LOCAL_CLIENT_ID guards in
+  //     handleOutgoingFor's kick_player/ban_player/mute_player/
+  //     demote_leader cases) - the alternative (a promoted leader locking
+  //     the actual host out of their own room) is worse than the
+  //     restriction.
+  //   LEADER - zero or more players the main leader (or another leader)
+  //     promoted. Identical powers to the main leader (isLeader() below
+  //     doesn't distinguish them) EXCEPT demoting: only the mainLeader flag
+  //     (see buildRoster) is exempt from demote_leader, so a leader can
+  //     promote/demote other leaders freely but never touches the host.
+  //
+  // Finer-grained, per-permission control (e.g. a leader who can mute but
+  // not kick) isn't modeled here on purpose - that level of tuning is a CLI
+  // concern (node-host/hostCli.js's REPL, run by whoever has terminal
+  // access to the process), not a live in-browser one.
 
   function findPeerEntry(clientId) {
     for (var id in peers) {
       if (peers[id].clientId === clientId) return { peerId: id, entry: peers[id] };
     }
     return null;
+  }
+
+  function isLeader(clientId) {
+    if (clientId === LOCAL_CLIENT_ID) return true;
+    var found = findPeerEntry(clientId);
+    return !!(found && found.entry.client.leader);
+  }
+
+  // Everyone currently connected, host included - see engine/packetBuilders.js's
+  // roomState for the wire shape. This is the only place a peer who's still
+  // spectating (never spawned, so absent from gi.gameState.players) shows up
+  // to anyone at all, which is why leader promotion has to read from here
+  // rather than the game roster.
+  function buildRoster() {
+    var list = [{
+      id: LOCAL_CLIENT_ID, name: hostAccount.display_name, team: hostClient.team,
+      inGame: !!gi.gameState.getPlayer(LOCAL_CLIENT_ID),
+      leader: true, mainLeader: true, muted: !!hostClient.muted, authed: !!hostAccount.authed,
+    }];
+    for (var id in peers) {
+      var entry = peers[id];
+      if (!entry.ready) continue;
+      list.push({
+        id: entry.clientId, name: entry.account.display_name, team: entry.client.team,
+        inGame: !!gi.gameState.getPlayer(entry.clientId),
+        leader: !!entry.client.leader, mainLeader: false,
+        muted: !!entry.client.muted, authed: !!entry.account.authed,
+      });
+    }
+    return list;
+  }
+
+  function broadcastRoster() {
+    if (!gi) return; // called from handlePeerLeft before bootAsHost finishes in principle - guard, not expected in practice
+    var packet = packetBuilders.roomState(buildRoster());
+    packetRouter.dispatch(packet);
+    broadcastToPeers(packet);
   }
 
   function kickClient(clientId) {
@@ -232,15 +289,11 @@ var webrtcTransport = (function () {
   }
 
   function setMuted(clientId, muted) {
-    if (clientId === LOCAL_CLIENT_ID) { hostClient.muted = !!muted; return; }
-    var found = findPeerEntry(clientId);
-    if (found) found.entry.client.muted = !!muted;
-  }
-
-  function isMuted(clientId) {
-    if (clientId === LOCAL_CLIENT_ID) return !!hostClient.muted;
-    var found = findPeerEntry(clientId);
-    return !!(found && found.entry.client.muted);
+    if (clientId === LOCAL_CLIENT_ID) { hostClient.muted = !!muted; } else {
+      var found = findPeerEntry(clientId);
+      if (found) found.entry.client.muted = !!muted;
+    }
+    broadcastRoster();
   }
 
   // Same disconnect as kickClient, plus telling the signaling DO (over the
@@ -257,6 +310,24 @@ var webrtcTransport = (function () {
     setTimeout(function () { handlePeerLeft(peerId); }, 300);
   }
 
+  function promoteToLeader(clientId) {
+    var found = findPeerEntry(clientId);
+    if (!found) return;
+    found.entry.client.leader = true;
+    broadcastRoster();
+  }
+
+  // The main leader (LOCAL_CLIENT_ID) is never a peer entry, so this is
+  // naturally a no-op against them - callers still check explicitly
+  // (handleOutgoingFor) so a demote attempt gets a real error reply instead
+  // of silently doing nothing.
+  function demoteFromLeader(clientId) {
+    var found = findPeerEntry(clientId);
+    if (!found) return;
+    found.entry.client.leader = false;
+    broadcastRoster();
+  }
+
   // ---- HOST role -----------------------------------------------------
 
   function handlePeerJoined(peerId) {
@@ -269,7 +340,7 @@ var webrtcTransport = (function () {
     // a long time, leaving a "ghost" player that looks connected but isn't.
     // Set at creation (not left undefined) so a peer that never finishes
     // connecting at all still ages out via the same sweep.
-    var entry = { pc: pc, dc: null, clientId: clientId, client: { id: clientId, team: 'spectator', muted: false }, account: { display_name: 'Player ' + clientId, authed: false }, ready: false, lastSeenMs: Date.now() };
+    var entry = { pc: pc, dc: null, clientId: clientId, client: { id: clientId, team: 'spectator', muted: false, leader: false }, account: { display_name: 'Player ' + clientId, authed: false }, ready: false, lastSeenMs: Date.now() };
     peers[peerId] = entry;
 
     pc.addEventListener('icecandidate', function (event) {
@@ -295,6 +366,7 @@ var webrtcTransport = (function () {
       var room = { instance: gi, kind: 'game', leaderId: LOCAL_CLIENT_ID };
       var joinedPacket = packetBuilders.joined(room, entry.client, entry.account, mapDataFrom(gi.gameState));
       entry.dc.send(JSON.stringify(joinedPacket));
+      broadcastRoster();
     });
     entry.dc.addEventListener('message', function (event) {
       entry.lastSeenMs = Date.now();
@@ -362,9 +434,6 @@ var webrtcTransport = (function () {
     overlayClear:          packetBuilders.overlayClear,
     matchEnd:               packetBuilders.matchEnd,
     powerupPreview:        packetBuilders.powerupPreview,
-    customTileUpsert:      packetBuilders.customTileUpsert,
-    customTileCatalog:     packetBuilders.customTileCatalog,
-    customTileDeleted:     packetBuilders.customTileDeleted,
     chat:                   packetBuilders.chat,
   };
 
@@ -448,6 +517,7 @@ var webrtcTransport = (function () {
     var previousTeam = clientRec.team;
     clientRec.team = team;
     dispatch({ type: 'team', team: team });
+    broadcastRoster();
 
     if (team === previousTeam) return;
     var player = gi.gameState.getPlayer(clientId);
@@ -458,6 +528,7 @@ var webrtcTransport = (function () {
         var respawned = gi.gameHelpers.spawnPlayer(clientId, team, accountRec.display_name, accountRec.authed);
         dispatch({ type: 'joinedGame', player: serializePlayer(respawned) });
       }
+      broadcastRoster();
     }
   }
 
@@ -468,6 +539,7 @@ var webrtcTransport = (function () {
     var packet = { type: 'joinedGame', player: serializePlayer(player) };
     if (clientId === LOCAL_CLIENT_ID) packetRouter.dispatch(packet);
     else broadcastToOne(clientId, packet);
+    broadcastRoster();
     if (gi.gameState.state === 'pregame') gi.matchManager.startMatch();
   }
 
@@ -546,6 +618,7 @@ var webrtcTransport = (function () {
         if (typeof packet.name === 'string' && packet.name.trim()) {
           accountRec.display_name = packet.name.trim().slice(0, 20);
         }
+        broadcastRoster();
         if (packet.tagpro && packet.tagpro.token) {
           verifyTagproToken(packet.tagpro).then(function (valid) {
             if (!valid) return;
@@ -553,10 +626,73 @@ var webrtcTransport = (function () {
             accountRec.display_name = packet.tagpro.reservedName;
             var p = gi.gameState.getPlayer(clientId);
             if (p) { p.authed = true; gi.emitter.emit('update', p); }
+            broadcastRoster();
           });
         }
         return;
       }
+
+      // ---- leader-gated moderation + match control -------------------
+      // Every case below requires isLeader(clientId) - the sender, not the
+      // target. A rejected attempt gets a real 'error' reply rather than a
+      // silent drop, same as every other guarded case above (e.g. 'chat'
+      // while muted) - the requester's own UI can then surface it instead
+      // of just looking like the button did nothing.
+      case 'kick_player': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can kick players' }); return; }
+        if (packet.targetId === LOCAL_CLIENT_ID) { dispatch({ type: 'error', message: 'cannot kick the main leader' }); return; }
+        kickClient(packet.targetId);
+        return;
+      }
+      case 'ban_player': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can ban players' }); return; }
+        if (packet.targetId === LOCAL_CLIENT_ID) { dispatch({ type: 'error', message: 'cannot ban the main leader' }); return; }
+        banClient(packet.targetId);
+        return;
+      }
+      case 'mute_player': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can mute players' }); return; }
+        if (packet.targetId === LOCAL_CLIENT_ID) { dispatch({ type: 'error', message: 'cannot mute the main leader' }); return; }
+        setMuted(packet.targetId, !!packet.muted);
+        return;
+      }
+      case 'promote_leader': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can promote players' }); return; }
+        promoteToLeader(packet.targetId);
+        return;
+      }
+      case 'demote_leader': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can demote players' }); return; }
+        if (packet.targetId === LOCAL_CLIENT_ID) { dispatch({ type: 'error', message: 'the main leader cannot be demoted' }); return; }
+        demoteFromLeader(packet.targetId);
+        return;
+      }
+      case 'start_match': {
+        if (!isLeader(clientId)) return;
+        gi.matchManager.startMatch();
+        return;
+      }
+      case 'pause_match': {
+        if (!isLeader(clientId)) return;
+        gi.matchManager.pauseMatch();
+        return;
+      }
+      case 'resume_match': {
+        if (!isLeader(clientId)) return;
+        gi.matchManager.resumeMatch();
+        return;
+      }
+      case 'reset_game': {
+        if (!isLeader(clientId)) return;
+        gi.matchManager.resetMatch();
+        return;
+      }
+      case 'end_match': {
+        if (!isLeader(clientId)) return;
+        gi.matchManager.endMatch('leaderEnded');
+        return;
+      }
+
       default: return;
     }
   }
@@ -599,6 +735,7 @@ var webrtcTransport = (function () {
     var room = { instance: gi, kind: 'game', leaderId: LOCAL_CLIENT_ID };
     var joinedPacket = packetBuilders.joined(room, hostClient, hostAccount, mapDataFrom(gi.gameState));
     packetApplier.applyJoined(joinedPacket);
+    broadcastRoster();
 
     gi.start();
     startStalePeerCheck();
@@ -746,9 +883,5 @@ var webrtcTransport = (function () {
     switchMap: switchMap,
     workerUrl: WORKER_URL,
     peerCount: function () { return Object.keys(peers).filter(function (id) { return peers[id].ready; }).length; },
-    kickPeer: kickClient,
-    banPeer: banClient,
-    setMuted: setMuted,
-    isMuted: isMuted,
   };
 })();

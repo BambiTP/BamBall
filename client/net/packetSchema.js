@@ -65,8 +65,24 @@ var packetSchema = {
     return { type: 'kick_player', targetId };
   },
 
-  setLeader(targetId) {
-    return { type: 'set_leader', targetId };
+  banPlayer(targetId) {
+    return { type: 'ban_player', targetId };
+  },
+
+  mutePlayer(targetId, muted) {
+    return { type: 'mute_player', targetId, muted: !!muted };
+  },
+
+  // Leader powers (kick/mute/ban/match control) are identical for the main
+  // leader (the host) and anyone promoted - promote/demote only grants or
+  // revokes that set, never targets the main leader (see webrtcTransport.js's
+  // handleOutgoingFor, which rejects a demote_leader aimed at the host).
+  promoteLeader(targetId) {
+    return { type: 'promote_leader', targetId };
+  },
+
+  demoteLeader(targetId) {
+    return { type: 'demote_leader', targetId };
   },
 
   setTeamFor(targetId, team) {
@@ -108,25 +124,5 @@ var packetSchema = {
 
   overlayClear(target) {
     return { type: 'overlay_clear', target };
-  },
-
-  // The "tile creator": leader-authored custom tiles (server/db.js
-  // custom_tiles). listCustomTiles registers+returns the leader's saved
-  // catalog; texture upload is a separate raw-bytes HTTP POST
-  // (ui/tileCreatorPanel.js), not a packet.
-  listCustomTiles() {
-    return { type: 'list_custom_tiles' };
-  },
-
-  createCustomTile(fields) {
-    return Object.assign({ type: 'create_custom_tile' }, fields);
-  },
-
-  updateCustomTile(id, fields) {
-    return Object.assign({ type: 'update_custom_tile', id: id }, fields);
-  },
-
-  deleteCustomTile(id) {
-    return { type: 'delete_custom_tile', id: id };
   },
 };

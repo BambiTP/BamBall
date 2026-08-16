@@ -92,15 +92,6 @@ var packetApplier = {
 
     seedMapState(packet);
 
-    // Custom tiles placed on the map still need their draw metadata and
-    // art registered, even though the client can no longer author them.
-    // Room-scoped, not map-scoped (game/gameInstance.js physicsLookup
-    // survives a map change) - only seeded here, on join, never touched by
-    // the mapChanged handler below.
-    for (var ct = 0; ct < (packet.customTiles || []).length; ct++) {
-      renderer.applyCustomTileDef(packet.customTiles[ct]);
-    }
-
     physicsWorld.buildWalls(game.wallMap);
     physicsWorld.buildSpikes(game.map);
 
@@ -199,16 +190,14 @@ var packetApplier = {
   },
 
   roomState: function (packet) {
+    game.roster = packet.players;
+    var mainLeader = packet.players.find(function (p) { return p.mainLeader; });
+    game.leaderId = mainLeader ? mainLeader.id : null;
     appEvents.emit('roster:changed', packet.players);
     for (var k = 0; k < packet.players.length; k++) {
       var entry = packet.players[k];
       if (!entry.inGame) removePlayerLocal(entry.id);
     }
-  },
-
-  leaderChanged: function (packet) {
-    game.leaderId = packet.leaderId;
-    appEvents.emit('leader:changed');
   },
 
   matchState: function (packet) {
@@ -352,26 +341,6 @@ var packetApplier = {
 
   capture: function (packet) {
     appEvents.emit('capture', packet.data);
-  },
-
-  // Tile creator (server/db.js custom_tiles): one tile created/edited/
-  // re-uploaded. The client can't author these any more, but it still has
-  // to render one when the server says a map cell now holds it.
-  customTileUpsert: function (packet) {
-    renderer.applyCustomTileDef(packet.tile);
-  },
-
-  customTileCatalog: function (packet) {
-    for (var i = 0; i < packet.tiles.length; i++) renderer.applyCustomTileDef(packet.tiles[i]);
-  },
-
-  // A leader deleted a custom tile. Cells already painted with it keep
-  // rendering their last texture until repainted (registerCustomTile's own
-  // "orphaned tile" design - see game/gameInstance.js) - this just drops the
-  // now-stale render metadata/texture so it can't be confused with a future
-  // tile that reuses the id.
-  customTileDeleted: function (packet) {
-    renderer.removeCustomTileDef(packet.id);
   },
 };
 

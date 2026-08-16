@@ -5,9 +5,18 @@ const gameConfig = {
   gravityX: 0,
   gravityY: 0,
 
+  // Gravity-mode jump: pressing up (edge-triggered, not held) sets vy
+  // directly to -jumpStrength instead of accel-nudging it, then normal
+  // movement keeps applying accel on top every frame same as always -
+  // holding down mid-air still pulls you down faster. Charges refill on
+  // touching a wall. Both values are untested guesses (3 TPU/s -> tiles,
+  // 1 charge) pending real-game comparison.
+  jumpStrength: 7.5,
+  jumpCharges:  1,
+
   // TagPro values converted from TPU to tiles (1 TPU = 2.5 tiles).
   radius:         0.475,
-  density:        0.475,
+  density:        1,      // TagPro server fixture: { density: 1 }
   friction:       0.5,
   restitution:    0.2,
 
@@ -31,10 +40,10 @@ const gameConfig = {
   // added friction, matching current behavior until a leader turns it on.
   floorFriction: 0,
 
-  boostMultiplier:     2.9,
+  boostMultiplier:     3,    // TagPro server: speedpadModifier
 
   bombRadius:          7,
-  bombStrength:        4,
+  bombStrength:        1.25, // TagPro server: explosionTypes.BOMB maxForce
 
   rollingBombRadius:   5,
   rollingBombStrength: 0.75,
@@ -42,8 +51,8 @@ const gameConfig = {
   portalExploRadius:   4,
   portalExploStrength: 0.25,
 
-  deathExploRadius:    3.5,
-  deathExploStrength:  0.25,
+  deathExploRadius:    3.5,   // fit from real replay data: 3.509
+  deathExploStrength:  0.6175, // fit from real replay data (3 clean spike-death samples, R^2 ~1.0)
 
   // Grace period after grabbing a flag during which the carrier can't be
   // popped by any cause (spike, gate, tag, mutual pop) - stops a defender

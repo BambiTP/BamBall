@@ -42,6 +42,8 @@ map <file>          switch map (file under assets/maps/, e.g. moai2.json)
 kick <clientId>     kick a player (they can rejoin)
 ban <clientId>      kick + IP-ban a player
 mute <clientId>     toggle mute for a player
+promote <clientId>  grant leader (kick/mute/ban/match control) to a player
+demote <clientId>   revoke leader from a player
 quit                shut down the host and disconnect everyone
 ```
 

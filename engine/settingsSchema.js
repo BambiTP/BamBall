@@ -115,6 +115,8 @@ const PHYSICS_SCHEMA = [
   // Gravity
   { key: 'gravityX', scope: 'physics', type: 'number', signedOk: true, category: 'Gravity', hooks: ['gravity'], unit: 'tiles/s²' },
   { key: 'gravityY', scope: 'physics', type: 'number', signedOk: true, category: 'Gravity', hooks: ['gravity'], unit: 'tiles/s²' },
+  { key: 'jumpStrength', scope: 'physics', type: 'number', category: 'Gravity', unit: 'tiles/s' },
+  { key: 'jumpCharges',  scope: 'physics', type: 'number', category: 'Gravity' },
 
   // Gravity Wells
   // tileScoped here writes through to the well object baked into

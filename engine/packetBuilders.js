@@ -23,30 +23,6 @@ function tileCategoriesOf(physicsLookup) {
   return map;
 }
 
-// One physicsLookup entry for a leader-authored custom tile (game/
-// gameInstance.js registerCustomTile) -> the shape sent to clients. Shared
-// by the 'joined' snapshot (customTilesOf, below) and the live
-// customTileUpsert/customTileCatalog broadcasts, so a (re)joining client
-// always sees exactly what everyone else already has.
-function wireCustomTile(entry) {
-  return {
-    id: entry.id, dbId: entry.dbId, name: entry.name,
-    hitboxes: entry.hitboxes, sensor: entry.sensor, actions: entry.actions,
-    spriteUrl: entry.spriteUrl ?? null,
-  };
-}
-
-// Every custom tile already registered into this room's physicsLookup - a
-// fresh room has none until the leader opens the Tile Creator
-// (mapEditManager.listCustomTiles).
-function customTilesOf(physicsLookup) {
-  const tiles = [];
-  for (const id in physicsLookup) {
-    if (physicsLookup[id].category === 'custom') tiles.push(wireCustomTile(physicsLookup[id]));
-  }
-  return tiles;
-}
-
 function serializePlayer(player) {
   if (!player) return null;
   return {
@@ -102,11 +78,6 @@ const packetBuilders = {
       playerKeys: matchManager.getPlayerKeys(),
       tileKeys:   matchManager.getTileKeys(),
       tileCategories: tileCategoriesOf(room.instance.physicsLookup),
-      // Empty until the leader opens the Tile Creator (mapEditManager.
-      // listCustomTiles) - a fresh room never eagerly loads a leader's
-      // saved custom tiles, so a (re)joining client just sees none until
-      // then, same as everyone else already in the room.
-      customTiles: customTilesOf(room.instance.physicsLookup),
       // Only players who actually have an override are worth sending - most
       // rooms never touch this, and a (re)connecting client needs to know
       // about every other player's overrides too, not just its own.
@@ -152,19 +123,19 @@ const packetBuilders = {
   },
 
   // The roster: everyone connected to the room, not just those spawned in
-  // (gameState.getPlayer only knows about spawned players, hence the
-  // separate inGame flag rather than reusing serializePlayer here).
-  roomState(room) {
-    const players = [];
-    for (const client of room.clients.values()) {
-      players.push({
-        id:     client.id,
-        name:   client.name,
-        team:   client.team,
-        inGame: !!room.instance.gameState.getPlayer(client.id),
-        leader: client.id === room.leaderId,
-      });
-    }
+  // (a spectator has no gameState player at all, hence the separate inGame
+  // flag rather than reusing serializePlayer here). Callers (webrtcTransport.js,
+  // node-host/hostCli.js) build the player list themselves - unlike every
+  // other builder above, there's no single `room.clients` shape shared
+  // between the P2P host and the old server model this was ported from, so
+  // this just wraps whatever list the caller already assembled.
+  //
+  // leader: true for the main leader (the host, always, unremovable) AND
+  // any player the main leader (or another leader) has promoted - both have
+  // identical admin powers (kick/mute/ban/match control), the two are only
+  // distinguished by mainLeader so the UI can hide "demote" for the one
+  // player nobody can demote.
+  roomState(players) {
     return { type: 'roomState', players };
   },
 
@@ -206,25 +177,6 @@ const packetBuilders = {
     return { type: 'overlayClear', target };
   },
 
-
-  // One created/edited/re-uploaded custom tile (the "tile creator").
-  customTileUpsert(entry) {
-    return { type: 'customTileUpsert', tile: wireCustomTile(entry) };
-  },
-
-  // The leader's whole saved catalog, sent once when they open the Tile
-  // Creator (mapEditManager.listCustomTiles) rather than one packet per tile.
-  customTileCatalog(entries) {
-    return { type: 'customTileCatalog', tiles: entries.map(wireCustomTile) };
-  },
-
-  customTileDeleted(id) {
-    return { type: 'customTileDeleted', id };
-  },
-
-  // A custom tile's 'message' action (game/tiles/customTileActions.js) -
-  // same wire shape as a player chat line (id: null marks it as not from a
-  // real player), so the existing chat log needs no new client code.
   chat(data) {
     return { type: 'chat', id: data.id, name: data.name, text: data.text };
   },

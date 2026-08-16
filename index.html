@@ -232,6 +232,17 @@
         <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
         <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
       </div>
+      <!-- Leader-only match control - hidden by default, shown by menu.js's renderMatchControls once the roster confirms this client is a leader. -->
+      <div id="matchControls" style="display:none;margin-top:12px;">
+        <h3>Match Control</h3>
+        <div class="joinRow">
+          <button id="matchStartBtn" class="menuBtn">Start</button>
+          <button id="matchPauseBtn" class="menuBtn">Pause</button>
+          <button id="matchResumeBtn" class="menuBtn">Resume</button>
+          <button id="matchResetBtn" class="menuBtn">Reset</button>
+          <button id="matchEndBtn" class="menuBtn">End</button>
+        </div>
+      </div>
       <div class="groupCodeLine">Group: <code id="groupCodeText">connecting…</code> <button class="menuBtn" id="copyGroupLinkBtn" style="display:none;padding:2px 8px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays" style="color:#7aa2ff">Browse all replays</a></div>
     </div>
 
@@ -310,7 +321,6 @@
 <script src="engine/gameHelpers.js" defer></script>
 <script src="engine/physicsHelpers.js" defer></script>
 <script src="engine/mapWiring.js" defer></script>
-<script src="engine/tiles/customTileActions.js" defer></script>
 <script src="engine/tiles/mapFormat.js" defer></script>
 <script src="engine/tiles/tileHandlers.js" defer></script>
 <script src="engine/tiles/tileLogic.js" defer></script>

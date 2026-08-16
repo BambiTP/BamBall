@@ -109,50 +109,33 @@ makeBody(id, x, y, physicsLookup) {
   bodyDef.position.Set(pos.x, pos.y);
   const body = this.world.CreateBody(bodyDef);
 
-  // Curated tiles (physicsData.js) are one shape described directly on
-  // tileData, same as always. Leader-authored custom tiles (game/
-  // gameInstance.js registerCustomTile) can carry a LIST of hitboxes - one
-  // fixture per hitbox on this same shared body, each with its own sensor
-  // flag, since a leader can mix a solid core with a sensor trigger ring
-  // (or any other combination) on one tile.
-  const fixtureSpecs = tileData.fixtures || [tileData];
+  const fixDef    = new b2FixtureDef();
+  fixDef.isSensor = tileData.sensor ?? false;
 
-  for (const spec of fixtureSpecs) {
-    const fixDef    = new b2FixtureDef();
-    fixDef.isSensor = spec.sensor ?? false;
-
-    // Solid fixtures (walls, spikes, a non-sensor custom hitbox) get the
-    // room's wall surface values at creation instead of Box2D's own
-    // defaults - before this, a wall body built after a leader changed
-    // wallFriction/wallRestitution (map edit paint, map change) silently
-    // kept the stock 0.2/0 until the next wallSurface hook run. Per-tile
-    // overrides are layered on top by gameInstance.setTile /
-    // matchManager.syncWallSurface.
-    if (!fixDef.isSensor) {
-      fixDef.friction    = this.config.wallFriction;
-      fixDef.restitution = this.config.wallRestitution;
-    }
-
-    if (spec.type === 'vector') {
-      const shape = new Box2D.Collision.Shapes.b2PolygonShape();
-      shape.SetAsArray(spec.vectors.map(v => new b2Vec2(v.x, v.y)));
-      fixDef.shape = shape;
-    } else if (spec.type === 'square') {
-      const shape = new Box2D.Collision.Shapes.b2PolygonShape();
-      shape.SetAsBox(spec.size / 2 / TILE_SIZE, spec.size / 2 / TILE_SIZE);
-      fixDef.shape = shape;
-    } else if (spec.type === 'circle') {
-      const shape = new b2CircleShape(spec.size / 2 / TILE_SIZE);
-      // Only custom-tile hitboxes ever carry an offset (multiple hitboxes
-      // on one body can't all sit at the shared body origin) - a curated
-      // tile's single circle has none and stays exactly centered, same as
-      // before this fixtures-list support existed.
-      if (spec.offsetX || spec.offsetY) shape.SetLocalPosition(new b2Vec2(spec.offsetX || 0, spec.offsetY || 0));
-      fixDef.shape = shape;
-    }
-
-    body.CreateFixture(fixDef);
+  // Solid fixtures (walls, spikes) get the room's wall surface values at
+  // creation instead of Box2D's own defaults - before this, a wall body
+  // built after a leader changed wallFriction/wallRestitution (map edit
+  // paint, map change) silently kept the stock 0.2/0 until the next
+  // wallSurface hook run. Per-tile overrides are layered on top by
+  // gameInstance.setTile / matchManager.syncWallSurface.
+  if (!fixDef.isSensor) {
+    fixDef.friction    = this.config.wallFriction;
+    fixDef.restitution = this.config.wallRestitution;
   }
+
+  if (tileData.type === 'vector') {
+    const shape = new Box2D.Collision.Shapes.b2PolygonShape();
+    shape.SetAsArray(tileData.vectors.map(v => new b2Vec2(v.x, v.y)));
+    fixDef.shape = shape;
+  } else if (tileData.type === 'square') {
+    const shape = new Box2D.Collision.Shapes.b2PolygonShape();
+    shape.SetAsBox(tileData.size / 2 / TILE_SIZE, tileData.size / 2 / TILE_SIZE);
+    fixDef.shape = shape;
+  } else if (tileData.type === 'circle') {
+    fixDef.shape = new b2CircleShape(tileData.size / 2 / TILE_SIZE);
+  }
+
+  body.CreateFixture(fixDef);
 
   return body;
 }

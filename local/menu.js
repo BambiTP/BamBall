@@ -37,11 +37,15 @@ function switchMenuTab(tabId) {
   }
 }
 
-// Kick/Mute/Ban are group-owner (=host) tools - activeTransport.role() is
-// null for solo play and 'peer' for anyone who joined someone else's group,
-// so this naturally renders nothing for either of those, no separate check
-// needed beyond the isMe skip (a host can't kick/mute/ban themselves).
-function buildPlayerRow(p, isMe) {
+// Kick/Mute/Ban/Promote/Demote are leader tools - "leader" means the main
+// leader (whoever is hosting, always) OR anyone that main leader (or
+// another leader) has promoted, NOT just activeTransport.role() === 'host'
+// any more: the whole point of promotion is that a peer with no special
+// transport role can hold these powers too. myLeader (passed in from
+// renderTeams, computed once per render off game.roster) is the actual
+// gate; the isMe skip on top of it just stops a leader from kicking/
+// muting/banning/demoting themselves.
+function buildPlayerRow(p, isMe, myLeader) {
   var row = document.createElement('div');
   row.className = 'playerRow';
 
@@ -53,38 +57,60 @@ function buildPlayerRow(p, isMe) {
   if (p.authed) nameSpan.style.color = '#4caf50';
   row.appendChild(nameSpan);
 
-  if (!isMe && typeof activeTransport !== 'undefined' && activeTransport && activeTransport.role && activeTransport.role() === 'host') {
+  if (p.leader) {
+    var badge = document.createElement('span');
+    badge.style.cssText = 'margin-left:6px;font-size:10px;opacity:0.75;';
+    badge.textContent = p.mainLeader ? '[Main Leader]' : '[Leader]';
+    row.appendChild(badge);
+  }
+
+  if (!isMe && myLeader) {
     var muteBtn = document.createElement('button');
     muteBtn.className = 'menuBtn';
     muteBtn.style.cssText = 'padding:2px 8px;margin-left:8px;font-size:11px;';
-    muteBtn.textContent = activeTransport.isMuted(p.id) ? 'Unmute' : 'Mute';
-    muteBtn.addEventListener('click', function () {
-      activeTransport.setMuted(p.id, !activeTransport.isMuted(p.id));
-      renderTeams();
-    });
+    muteBtn.textContent = p.muted ? 'Unmute' : 'Mute';
+    muteBtn.addEventListener('click', function () { actions.mutePlayer(p.id, !p.muted); });
     row.appendChild(muteBtn);
 
-    var kickBtn = document.createElement('button');
-    kickBtn.className = 'menuBtn';
-    kickBtn.style.cssText = 'padding:2px 8px;margin-left:4px;font-size:11px;background:#a33;';
-    kickBtn.textContent = 'Kick';
-    kickBtn.addEventListener('click', function () { activeTransport.kickPeer(p.id); });
-    row.appendChild(kickBtn);
+    // Kick/Ban/Demote never target the main leader - the host can't be
+    // removed from their own room by a promoted leader (rejected host-side
+    // too, see webrtcTransport.js's handleOutgoingFor; hidden here as well
+    // so the buttons aren't even offered).
+    if (!p.mainLeader) {
+      var kickBtn = document.createElement('button');
+      kickBtn.className = 'menuBtn';
+      kickBtn.style.cssText = 'padding:2px 8px;margin-left:4px;font-size:11px;background:#a33;';
+      kickBtn.textContent = 'Kick';
+      kickBtn.addEventListener('click', function () { actions.kickPlayer(p.id); });
+      row.appendChild(kickBtn);
 
-    var banBtn = document.createElement('button');
-    banBtn.className = 'menuBtn';
-    banBtn.style.cssText = 'padding:2px 8px;margin-left:4px;font-size:11px;background:#700;';
-    banBtn.textContent = 'Ban';
-    banBtn.addEventListener('click', function () { activeTransport.banPeer(p.id); });
-    row.appendChild(banBtn);
+      var banBtn = document.createElement('button');
+      banBtn.className = 'menuBtn';
+      banBtn.style.cssText = 'padding:2px 8px;margin-left:4px;font-size:11px;background:#700;';
+      banBtn.textContent = 'Ban';
+      banBtn.addEventListener('click', function () { actions.banPlayer(p.id); });
+      row.appendChild(banBtn);
+
+      var promoteBtn = document.createElement('button');
+      promoteBtn.className = 'menuBtn';
+      promoteBtn.style.cssText = 'padding:2px 8px;margin-left:4px;font-size:11px;';
+      promoteBtn.textContent = p.leader ? 'Demote' : 'Promote';
+      promoteBtn.addEventListener('click', function () {
+        if (p.leader) actions.demoteLeader(p.id); else actions.promoteLeader(p.id);
+      });
+      row.appendChild(promoteBtn);
+    }
   }
 
   return row;
 }
 
-// Solo build today - only ever one player - but reads the real
-// game.players list and team assignment, so this is already correct for
-// however many peers eventually join over P2P.
+// Solo build has no roster broadcast at all (nothing to promote/kick/ban
+// when you're the only player), so game.roster stays empty there and this
+// falls back to reading game.players directly, same as before roles
+// existed. A P2P room (host or peer) gets a real roomState roster
+// (game.roster - see app/packetApplier.js) that includes every connected
+// client, spectators included, which game.players alone never did.
 function renderTeams() {
   var lists = {
     red: document.getElementById('redTeamList'),
@@ -93,10 +119,23 @@ function renderTeams() {
   };
   for (var team in lists) if (lists[team]) lists[team].textContent = '';
 
-  for (var i = 0; i < game.players.length; i++) {
-    var p = game.players[i];
-    var list = lists[p.team];
-    if (list) list.appendChild(buildPlayerRow(p, p.id === game.myId));
+  if (game.roster && game.roster.length) {
+    var myEntry = game.roster.find(function (r) { return r.id === game.clientId; });
+    var myLeader = !!(myEntry && myEntry.leader);
+
+    for (var i = 0; i < game.roster.length; i++) {
+      var r = game.roster[i];
+      var list = lists[r.team] || lists.spectator;
+      if (list) list.appendChild(buildPlayerRow(r, r.id === game.clientId, myLeader));
+    }
+    renderMatchControls(myLeader);
+    return;
+  }
+
+  for (var j = 0; j < game.players.length; j++) {
+    var p = game.players[j];
+    var plist = lists[p.team];
+    if (plist) plist.appendChild(buildPlayerRow(p, p.id === game.myId, false));
   }
 
   // The local player isn't in game.players until they've actually spawned
@@ -108,6 +147,30 @@ function renderTeams() {
     spectatorRow.textContent = 'Player (you)';
     if (lists.spectator) lists.spectator.appendChild(spectatorRow);
   }
+  renderMatchControls(false);
+}
+
+// Start/Pause/Resume/Reset/End are leader-only match control - see
+// engine/matchManager.js, wired through to the host's handleOutgoingFor by
+// the leader-gated start_match/pause_match/resume_match/reset_game/
+// end_match packets (local/webrtcTransport.js, node-host/hostCli.js).
+function renderMatchControls(myLeader) {
+  var box = document.getElementById('matchControls');
+  if (!box) return;
+  box.style.display = myLeader ? '' : 'none';
+}
+
+function initMatchControls() {
+  var startBtn  = document.getElementById('matchStartBtn');
+  var pauseBtn  = document.getElementById('matchPauseBtn');
+  var resumeBtn = document.getElementById('matchResumeBtn');
+  var resetBtn  = document.getElementById('matchResetBtn');
+  var endBtn    = document.getElementById('matchEndBtn');
+  if (startBtn)  startBtn.addEventListener('click', function () { actions.startMatch(); });
+  if (pauseBtn)  pauseBtn.addEventListener('click', function () { actions.pauseMatch(); });
+  if (resumeBtn) resumeBtn.addEventListener('click', function () { actions.resumeMatch(); });
+  if (resetBtn)  resetBtn.addEventListener('click', function () { actions.resetGame(); });
+  if (endBtn)    endBtn.addEventListener('click', function () { actions.endMatch(); });
 }
 
 function initMenu() {
@@ -124,6 +187,8 @@ function initMenu() {
   gameEvents.on('player:removed', renderTeams);
   appEvents.on('spectating:changed', renderTeams);
   appEvents.on('team:changed', renderTeams);
+  appEvents.on('roster:changed', renderTeams);
+  initMatchControls();
   renderTeams();
 
   // The game's own directory, with any existing /group/<code> suffix or

@@ -8,7 +8,7 @@ var createTileHandlers = (typeof require === 'function') ? require('./tileHandle
 var POWERUP_TYPES      = (typeof require === 'function') ? require('./powerupTypes') : globalThis.PowerupTypes;
 
 var setupTileLogic = function setupTileLogic(instance) {
-  const { gameState, gameHelpers, physicsHelpers, config, emitter, customTileActionsRunner } = instance;
+  const { gameState, gameHelpers, physicsHelpers, config, emitter } = instance;
 
   const handlers = createTileHandlers(gameState, gameHelpers, physicsHelpers, config, emitter);
 
@@ -70,12 +70,11 @@ var setupTileLogic = function setupTileLogic(instance) {
   function handlePlayerBegin(player, other) {
     if (player.dead) return;
 
-    // Leader-authored custom tiles (game/tiles/customTileActions.js): their
-    // numeric id never matches a curated `other.name` below, so this can run
-    // unconditionally ahead of the hardcoded dispatch without risk of a
-    // double-fire.
-    if (other.actions && other.actions.length) {
-      customTileActionsRunner.run(player, other, other.actions);
+    // Gravity-mode jump refill: touching a wall counts as "grounded" -
+    // untested guess for what should grant a jump back, easy to swap for a
+    // narrower check (e.g. only the bottom-facing contact normal) later.
+    if (other.category === 'wall') {
+      handlers.resetJump(player);
     }
 
     if (other.name === 'Boost') {

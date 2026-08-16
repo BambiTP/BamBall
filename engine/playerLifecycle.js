@@ -2,14 +2,26 @@
 const { playerSetting } = (typeof require === 'function') ? require('./settingsResolver') : globalThis.SettingsResolver;
 
 // Final value of a stat: a leader's per-player override if one exists,
-// otherwise the player's own base, then the highest value any active
-// modifier sets for it. Change Math.max to += for additive stacking.
+// otherwise the player's own base, then modifiers layered on top. accel
+// stacks additively above base - real TagPro sums percentage bonuses, so
+// Juke Juice + Team Tile together give a higher accel than either alone
+// (1.24x + 1.48x - 1 = 1.72x base, not just the stronger of the two).
+// Every other stat (maxSpeed) still takes the strongest active modifier,
+// since nothing stacks maxSpeed bonuses today.
 function derivedStat(player, stat) {
-  let value = player.overrides[stat] ?? player.baseStats[stat];
-  for (const mod of Object.values(player.modifiers)) {
-    if (mod.stats[stat] !== undefined) {
-      value = Math.max(value, mod.stats[stat]);
+  const base = player.overrides[stat] ?? player.baseStats[stat];
+
+  if (stat === 'accel') {
+    let value = base;
+    for (const mod of Object.values(player.modifiers)) {
+      if (mod.stats.accel !== undefined) value += mod.stats.accel - base;
     }
+    return value;
+  }
+
+  let value = base;
+  for (const mod of Object.values(player.modifiers)) {
+    if (mod.stats[stat] !== undefined) value = Math.max(value, mod.stats[stat]);
   }
   return value;
 }
@@ -110,6 +122,8 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
         a: 0,
 
         left: false, right: false, up: false, down: false,
+        wasUp: false, // edge-detects a fresh up-press for jump, vs. holding it
+        jumpsRemaining: config.jumpCharges,
 
         // Per-player defaults. The room config seeds them, but each player
         // owns their copy so individuals can differ.
@@ -192,6 +206,8 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
       player.x    = point.x;
       player.y    = point.y;
       player.dead = false;
+      player.wasUp = false;
+      player.jumpsRemaining = config.jumpCharges;
       player.snapCount = (player.snapCount || 0) + 1;
       emitter.emit('update', player);
     },

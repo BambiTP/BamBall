@@ -17,7 +17,13 @@ var game = {
 
   myId:     null, // player id, set only while spawned in the game
   clientId: null, // this connection's client id, set on 'joined'
-  leaderId: null, // the room's current leader client id
+  leaderId: null, // the room's main leader (the host) client id
+
+  // Every connected client (host + peers), including spectators who never
+  // spawned - see engine/packetBuilders.js's roomState. Empty in solo play
+  // (nothing ever broadcasts a roomState packet there), so UI reading this
+  // must treat an empty list as "unknown," not "empty room."
+  roster: [],
 
   mapId:     null,
   mapName:   null,

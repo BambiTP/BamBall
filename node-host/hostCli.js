@@ -148,15 +148,50 @@ function handlePeerLeft(peerId) {
   }
   log('player left: ' + describeEntry(entry));
   delete peers[peerId];
+  broadcastRoster();
 }
 
-// ---- moderation --------------------------------------------------------
+// ---- moderation ----------------------------------------------------------
+//
+// No LOCAL_CLIENT_ID/mainLeader concept here (unlike webrtcTransport.js's
+// browser host) - this process has no local player at all, so "who's
+// ultimately in charge" is just whoever has terminal access, not a
+// connected client. The REPL commands below (promote/demote/kick/ban/mute)
+// act directly with no permission check for that reason; isLeader() only
+// gates packets arriving FROM connected peers.
 
 function findPeerEntry(clientId) {
   for (var id in peers) {
     if (peers[id].clientId === clientId) return { peerId: id, entry: peers[id] };
   }
   return null;
+}
+
+function isLeader(clientId) {
+  var found = findPeerEntry(clientId);
+  return !!(found && found.entry.client.leader);
+}
+
+// Everyone connected, including spectators who never spawned - mirrors
+// webrtcTransport.js's buildRoster/roomState. mainLeader is never true for
+// anyone here (see header comment above).
+function buildRoster() {
+  var list = [];
+  for (var id in peers) {
+    var entry = peers[id];
+    if (!entry.ready) continue;
+    list.push({
+      id: entry.clientId, name: entry.account.display_name, team: entry.client.team,
+      inGame: !!gi.gameState.getPlayer(entry.clientId),
+      leader: !!entry.client.leader, mainLeader: false,
+      muted: !!entry.client.muted, authed: !!entry.account.authed,
+    });
+  }
+  return list;
+}
+
+function broadcastRoster() {
+  broadcastToPeers(packetBuilders.roomState(buildRoster()));
 }
 
 function kickClient(clientId) {
@@ -176,6 +211,30 @@ function banClient(clientId) {
   return true;
 }
 
+function setMuted(clientId, muted) {
+  var found = findPeerEntry(clientId);
+  if (!found) return false;
+  found.entry.client.muted = !!muted;
+  broadcastRoster();
+  return true;
+}
+
+function promoteToLeader(clientId) {
+  var found = findPeerEntry(clientId);
+  if (!found) return false;
+  found.entry.client.leader = true;
+  broadcastRoster();
+  return true;
+}
+
+function demoteFromLeader(clientId) {
+  var found = findPeerEntry(clientId);
+  if (!found) return false;
+  found.entry.client.leader = false;
+  broadcastRoster();
+  return true;
+}
+
 // ---- WebRTC peer connections --------------------------------------------
 
 function handlePeerJoined(peerId) {
@@ -187,7 +246,7 @@ function handlePeerJoined(peerId) {
   // "ghost" peer that looks connected but isn't actually there anymore.
   var entry = {
     pc: pc, dc: null, clientId: clientId,
-    client: { id: clientId, team: 'spectator', muted: false },
+    client: { id: clientId, team: 'spectator', muted: false, leader: false },
     account: { display_name: 'Player ' + clientId, authed: false },
     ready: false, lastSeenMs: Date.now(),
   };
@@ -213,6 +272,7 @@ function wireHostDataChannel(peerId, entry) {
     var joinedPacket = packetBuilders.joined(room, entry.client, entry.account, mapDataFrom(gi.gameState));
     entry.dc.send(JSON.stringify(joinedPacket));
     log('player joined: ' + describeEntry(entry));
+    broadcastRoster();
   });
   entry.dc.addEventListener('message', function (event) {
     entry.lastSeenMs = Date.now();
@@ -278,9 +338,6 @@ var EVENT_MAP = {
   overlayClear:          packetBuilders.overlayClear,
   matchEnd:               packetBuilders.matchEnd,
   powerupPreview:        packetBuilders.powerupPreview,
-  customTileUpsert:      packetBuilders.customTileUpsert,
-  customTileCatalog:     packetBuilders.customTileCatalog,
-  customTileDeleted:     packetBuilders.customTileDeleted,
   chat:                   packetBuilders.chat,
 };
 
@@ -326,6 +383,7 @@ function setTeamFor(clientId, clientRec, accountRec, team, dispatch) {
   var previousTeam = clientRec.team;
   clientRec.team = team;
   dispatch({ type: 'team', team: team });
+  broadcastRoster();
 
   if (team === previousTeam) return;
   var player = gi.gameState.getPlayer(clientId);
@@ -336,6 +394,7 @@ function setTeamFor(clientId, clientRec, accountRec, team, dispatch) {
       var respawned = gi.gameHelpers.spawnPlayer(clientId, team, accountRec.display_name, accountRec.authed);
       dispatch({ type: 'joinedGame', player: serializePlayer(respawned) });
     }
+    broadcastRoster();
   }
 }
 
@@ -344,6 +403,7 @@ function joinGameFor(clientId, clientRec, accountRec) {
   if (clientRec.team !== 'red' && clientRec.team !== 'blue') return;
   var player = gi.gameHelpers.spawnPlayer(clientId, clientRec.team, accountRec.display_name, accountRec.authed);
   broadcastToOne(clientId, { type: 'joinedGame', player: serializePlayer(player) });
+  broadcastRoster();
   if (gi.gameState.state === 'pregame') gi.matchManager.startMatch();
 }
 
@@ -394,6 +454,7 @@ function handleOutgoingFor(clientId, entry, packet) {
       if (typeof packet.name === 'string' && packet.name.trim()) {
         accountRec.display_name = packet.name.trim().slice(0, 20);
       }
+      broadcastRoster();
       if (packet.tagpro && packet.tagpro.token) {
         verifyTagproToken(packet.tagpro).then(function (valid) {
           if (!valid) return;
@@ -401,10 +462,48 @@ function handleOutgoingFor(clientId, entry, packet) {
           accountRec.display_name = packet.tagpro.reservedName;
           var p = gi.gameState.getPlayer(clientId);
           if (p) { p.authed = true; gi.emitter.emit('update', p); }
+          broadcastRoster();
         });
       }
       return;
     }
+
+    // ---- leader-gated moderation + match control ----------------------
+    // See isLeader()'s header comment: promote/demote/kick/ban/mute are
+    // also available unchecked from the REPL (printHelp, below) for
+    // whoever has terminal access - these packet cases are what makes the
+    // SAME actions reachable from a connected leader's own browser UI.
+    case 'kick_player': {
+      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can kick players' }); return; }
+      kickClient(packet.targetId);
+      return;
+    }
+    case 'ban_player': {
+      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can ban players' }); return; }
+      banClient(packet.targetId);
+      return;
+    }
+    case 'mute_player': {
+      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can mute players' }); return; }
+      setMuted(packet.targetId, !!packet.muted);
+      return;
+    }
+    case 'promote_leader': {
+      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can promote players' }); return; }
+      promoteToLeader(packet.targetId);
+      return;
+    }
+    case 'demote_leader': {
+      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can demote players' }); return; }
+      demoteFromLeader(packet.targetId);
+      return;
+    }
+    case 'start_match':  { if (isLeader(clientId)) gi.matchManager.startMatch();  return; }
+    case 'pause_match':  { if (isLeader(clientId)) gi.matchManager.pauseMatch();  return; }
+    case 'resume_match': { if (isLeader(clientId)) gi.matchManager.resumeMatch(); return; }
+    case 'reset_game':   { if (isLeader(clientId)) gi.matchManager.resetMatch();  return; }
+    case 'end_match':    { if (isLeader(clientId)) gi.matchManager.endMatch('leaderEnded'); return; }
+
     default: return;
   }
 }
@@ -446,6 +545,7 @@ async function boot() {
 
 function describeEntry(entry) {
   return 'clientId=' + entry.clientId + ' name="' + entry.account.display_name + '" team=' + entry.client.team
+    + (entry.client.leader ? ' [leader]' : '')
     + (entry.account.authed ? ' [tagpro-verified]' : '');
 }
 
@@ -472,6 +572,8 @@ function printHelp() {
   log('  kick <clientId>     kick a player (they can rejoin)');
   log('  ban <clientId>      kick + IP-ban a player');
   log('  mute <clientId>     toggle mute for a player');
+  log('  promote <clientId>  grant leader (kick/mute/ban/match control) to a player');
+  log('  demote <clientId>   revoke leader from a player');
   log('  quit                shut down the host and disconnect everyone');
 }
 
@@ -517,9 +619,11 @@ function startRepl() {
     else if (cmd === 'ban' && arg) log(banClient(Number(arg)) ? 'banned ' + arg : 'no such player');
     else if (cmd === 'mute' && arg) {
       var found = findPeerEntry(Number(arg));
-      if (found) { found.entry.client.muted = !found.entry.client.muted; log((found.entry.client.muted ? 'muted ' : 'unmuted ') + arg); }
+      if (found) log(setMuted(Number(arg), !found.entry.client.muted) ? ((found.entry.client.muted ? 'muted ' : 'unmuted ') + arg) : 'no such player');
       else log('no such player');
     }
+    else if (cmd === 'promote' && arg) log(promoteToLeader(Number(arg)) ? 'promoted ' + arg + ' to leader' : 'no such player');
+    else if (cmd === 'demote' && arg) log(demoteFromLeader(Number(arg)) ? 'demoted ' + arg : 'no such player');
     else if (cmd === 'quit' || cmd === 'exit') { rl.close(); shutdown(); return; }
     else if (cmd === 'help' || cmd === '') printHelp();
     else log('unknown command "' + cmd + '" - try "help"');

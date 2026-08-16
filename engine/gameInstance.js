@@ -13,79 +13,6 @@ var setupTileLogic       = (typeof require === 'function') ? require('./tiles/ti
 var mapFormat = (typeof require === 'function') ? require('./tiles/mapFormat') : globalThis.MapFormat;
 var createMatchManager   = (typeof require === 'function') ? require('./matchManager') : globalThis.createMatchManager;
 var createMapWiring      = (typeof require === 'function') ? require('./mapWiring') : globalThis.createMapWiring;
-var createCustomTileActions = (typeof require === 'function') ? require('./tiles/customTileActions') : globalThis.createCustomTileActions;
-
-// Numeric tile ids for leader-authored custom tiles (server/db.js
-// custom_tiles) are derived from the row's own db id, never random or
-// per-room - db id 7 is always numeric id 10007 in every room, so the same
-// tile is stable across a leader's rooms/sessions. Kept well above every
-// curated physicsData id (highest today is in the 20s) so the two id
-// spaces can never collide.
-const CUSTOM_TILE_ID_BASE = 10000;
-
-// The texture/hitbox canvas (client/game/ui/tileHitboxEditor.js) works in
-// 0-40 pixel space, one tile cell wide - Box2D wants tile-local units
-// centered on the body origin (0,0 = tile center, ±0.5 = the cell edges,
-// same convention physicsData.js's wall-slope `vectors` already use).
-const HITBOX_CANVAS_PX = 40;
-function toLocalUnit(px) {
-  return (px - HITBOX_CANVAS_PX / 2) / HITBOX_CANVAS_PX;
-}
-
-// One leader-drawn hitbox (client/game/ui/tileHitboxEditor.js's {type, x,
-// y, w, h, sensor} or {type: 'polygon', points, sensor}) -> a
-// game/physicsWorld.js fixture spec. Circles keep their true round shape
-// (via SetLocalPosition, since several hitboxes can't all sit at the body's
-// shared origin); rectangle/ellipse/polygon all become a 'vector' polygon -
-// ellipse is sampled into a many-sided approximation, rectangle is just its
-// 4 corners, and polygon is the leader's own points passed straight through.
-const ELLIPSE_SEGMENTS = 12;
-
-function hitboxToFixtureSpec(hb) {
-  const sensor = !!hb.sensor;
-
-  if (hb.type === 'circle') {
-    return {
-      type: 'circle',
-      size: Math.max(hb.w, hb.h),
-      offsetX: toLocalUnit(hb.x + hb.w / 2),
-      offsetY: toLocalUnit(hb.y + hb.h / 2),
-      sensor,
-    };
-  }
-
-  if (hb.type === 'polygon') {
-    return { type: 'vector', vectors: hb.points.map((p) => ({ x: toLocalUnit(p[0]), y: toLocalUnit(p[1]) })), sensor };
-  }
-
-  const cx = hb.x + hb.w / 2;
-  const cy = hb.y + hb.h / 2;
-
-  if (hb.type === 'ellipse') {
-    const rx = hb.w / 2;
-    const ry = hb.h / 2;
-    const vectors = [];
-    for (let i = 0; i < ELLIPSE_SEGMENTS; i++) {
-      const a = (i / ELLIPSE_SEGMENTS) * Math.PI * 2;
-      vectors.push({ x: toLocalUnit(cx + Math.cos(a) * rx), y: toLocalUnit(cy + Math.sin(a) * ry) });
-    }
-    return { type: 'vector', vectors, sensor };
-  }
-
-  // rectangle
-  const hw = hb.w / 2;
-  const hh = hb.h / 2;
-  return {
-    type: 'vector',
-    vectors: [
-      { x: toLocalUnit(cx - hw), y: toLocalUnit(cy - hh) },
-      { x: toLocalUnit(cx + hw), y: toLocalUnit(cy - hh) },
-      { x: toLocalUnit(cx + hw), y: toLocalUnit(cy + hh) },
-      { x: toLocalUnit(cx - hw), y: toLocalUnit(cy + hh) },
-    ],
-    sensor,
-  };
-}
 
 class GameInstance {
   // mode: 'game' or 'editor' (see GameState). Set once at construction -
@@ -112,9 +39,6 @@ class GameInstance {
     this.snapshotFactory = createSnapshotFactory(this.gameState, config);
     this.matchManager   = createMatchManager(this.gameState, this.gameHelpers, this.physicsWorld, config, this.emitter, this.physicsLookup);
     this.mapWiring      = createMapWiring(this.gameState, this.gameHelpers, this.physicsLookup, this.emitter);
-    this.customTileActionsRunner = createCustomTileActions(
-      this.gameState, this.gameHelpers, this.physicsHelpers, this.physicsWorld, this.emitter
-    );
     setupTileLogic(this);
 
     this.emitter.on('setTile', function (x, y, id) {
@@ -372,44 +296,6 @@ class GameInstance {
   static MAX_SPAWN_RADIUS  = 20;
   static MAX_SPAWN_WEIGHT  = 100;
   static MAX_SPAWN_POINTS  = 64;
-  static CUSTOM_TILE_ID_BASE = CUSTOM_TILE_ID_BASE;
-
-  // Leader-authored tile (server/db.js custom_tiles row -> this room's
-  // physicsLookup, so it becomes paintable through the ordinary
-  // changeTiles/set_tile path exactly like a curated tile). Called by
-  // mapEditManager on create/update/texture-upload; safe to call again for
-  // the same row (e.g. an edit) since it just overwrites the entry.
-  registerCustomTile(dbRow) {
-    const id = CUSTOM_TILE_ID_BASE + dbRow.id;
-    this.physicsLookup[id] = {
-      id,
-      dbId:   dbRow.id,
-      name:   `Custom:${dbRow.id}`,
-      category: 'custom',
-      // Raw 0-40px hitbox list, unconverted - round-tripped back to clients
-      // (server/packets/packetBuilders.js wireCustomTile) so the hitbox
-      // editor can reload a tile's existing hitboxes for editing. `fixtures`
-      // below is the same list translated into Box2D-local units/shapes.
-      hitboxes: dbRow.hitboxes,
-      fixtures: dbRow.hitboxes.map(hitboxToFixtureSpec),
-      // Client render layering (client/game/render/spriteAtlas.js
-      // applyCustomTileDef) only needs one walk-through-vs-obstacle bit, not
-      // the full per-hitbox breakdown - "any solid hitbox" is the more
-      // conservative (visually correct) choice when a tile mixes both.
-      sensor: dbRow.hitboxes.every((hb) => hb.sensor),
-      actions: dbRow.actions,
-      spriteUrl: dbRow.filename ? `/tiles-custom/${dbRow.filename}` : null,
-    };
-    return id;
-  }
-
-  // Placed instances already on the map keep their id but lose their
-  // physics/action data (physicsLookup[id] undefined) - the same "orphaned
-  // tile" state a deleted curated tile id would leave; a leader who wants
-  // them gone repaints them like any other tile.
-  unregisterCustomTile(dbId) {
-    delete this.physicsLookup[CUSTOM_TILE_ID_BASE + dbId];
-  }
 
   setTile(x, y, id) {
     this.gameState.setMapTile(x, y, id);
@@ -728,6 +614,7 @@ class GameInstance {
     if (this.gameState.state === 'paused') return;
 
     this.gameState.stepCount++;
+    this.physicsHelpers.applyJumps();
     this.physicsHelpers.movePlayers();
     this.physicsHelpers.applyForceFields();
     this.physicsWorld.step(this.timeStep);

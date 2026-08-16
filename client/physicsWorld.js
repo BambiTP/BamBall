@@ -12,7 +12,7 @@ var physConfig = {
   gravityY: 0,
 
   radius:         0.475,
-  density:        0.475,
+  density:        1,      // TagPro server fixture: { density: 1 }
   friction:       0.5,
   restitution:    0.2,
   linearDamping:  0.5,

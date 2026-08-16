@@ -79,9 +79,6 @@ var localTransport = (function () {
     overlayClear:          packetBuilders.overlayClear,
     matchEnd:               packetBuilders.matchEnd,
     powerupPreview:        packetBuilders.powerupPreview,
-    customTileUpsert:      packetBuilders.customTileUpsert,
-    customTileCatalog:     packetBuilders.customTileCatalog,
-    customTileDeleted:     packetBuilders.customTileDeleted,
     chat:                   packetBuilders.chat,
   };
 

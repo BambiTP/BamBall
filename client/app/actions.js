@@ -40,7 +40,10 @@ var actions = {
   updateSettings: function (settings) { socket.send(packetSchema.updateSettings(settings)); },
 
   kickPlayer:  function (targetId) { socket.send(packetSchema.kickPlayer(targetId)); },
-  setLeader:   function (targetId) { socket.send(packetSchema.setLeader(targetId)); },
+  banPlayer:   function (targetId) { socket.send(packetSchema.banPlayer(targetId)); },
+  mutePlayer:  function (targetId, muted) { socket.send(packetSchema.mutePlayer(targetId, muted)); },
+  promoteLeader: function (targetId) { socket.send(packetSchema.promoteLeader(targetId)); },
+  demoteLeader:  function (targetId) { socket.send(packetSchema.demoteLeader(targetId)); },
   setTeamFor:  function (targetId, team) { socket.send(packetSchema.setTeamFor(targetId, team)); },
 
   setTile: function (id, cells) { socket.send(packetSchema.setTile(id, cells)); },
@@ -62,12 +65,6 @@ var actions = {
   },
   overlayUndo:  function (target) { socket.send(packetSchema.overlayUndo(target)); },
   overlayClear: function (target) { socket.send(packetSchema.overlayClear(target)); },
-
-
-  listCustomTiles:  function () { socket.send(packetSchema.listCustomTiles()); },
-  createCustomTile: function (fields) { socket.send(packetSchema.createCustomTile(fields)); },
-  updateCustomTile: function (id, fields) { socket.send(packetSchema.updateCustomTile(id, fields)); },
-  deleteCustomTile: function (id) { socket.send(packetSchema.deleteCustomTile(id)); },
 
   // Debug console only - an explicit, clearly-labeled escape hatch that
   // bypasses packetSchema entirely, rather than sharing a code path with

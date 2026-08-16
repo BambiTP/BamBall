@@ -63,6 +63,14 @@ var createTileHandlers = function createTileHandlers(gameState, gameHelpers, phy
 
   return {
 
+    // ---- gravity mode --------------------------------------------------------
+
+    // Plain property write, not a body mutation - safe to run inline from a
+    // contact callback (unlike popPlayer, this needs no afterStep defer).
+    resetJump(player) {
+      player.jumpsRemaining = config.jumpCharges;
+    },
+
     // ---- boosts ------------------------------------------------------------
 
     // Cooldowns go through gameHelpers.tileSetting: this one boost's
