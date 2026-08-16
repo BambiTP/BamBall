@@ -74,6 +74,7 @@ var localTransport = (function () {
     physicsChanged:        packetBuilders.physicsChanged,
     playerPhysicsChanged:  packetBuilders.playerPhysicsChanged,
     tileSettingsChanged:   packetBuilders.tileSettingsChanged,
+    saveStatesChanged:     packetBuilders.saveStatesChanged,
     overlayStroke:         packetBuilders.overlayStroke,
     overlayUndo:           packetBuilders.overlayUndo,
     overlayClear:          packetBuilders.overlayClear,
@@ -252,9 +253,35 @@ var localTransport = (function () {
         recorder.recordBroadcast(chatPacket);
         return;
       }
+      // Solo play has exactly one player, so there's no "leader" to gate
+      // against the way webrtcTransport.js/hostCli.js do - whoever's here
+      // can always change their own room's settings. matchManager emits its
+      // own 'physicsChanged'/'matchStateChanged'/etc, already covered by
+      // EVENT_MAP above, so nothing here sends a packet itself.
+      case 'update_physics':       return void gi.matchManager.updatePhysics(packet.settings);
+      case 'update_settings':      return void gi.matchManager.updateSettings(packet.settings);
+      case 'update_tile_settings': return void gi.matchManager.updateTileSettings(packet.x, packet.y, packet.settings);
+      case 'update_player_physics': {
+        var targetPlayer = gi.gameState.getPlayer(packet.targetId);
+        if (!targetPlayer) return;
+        gi.matchManager.updatePlayerPhysics(targetPlayer, packet.settings);
+        return;
+      }
+      case 'changeMap':
+        switchMap(packet.mapId).catch(function (err) {
+          packetRouter.dispatch({ type: 'error', message: 'could not load map: ' + err.message });
+        });
+        return;
+      case 'save_state':  return void gi.matchManager.captureSaveState(packet.name);
+      case 'load_state':
+        if (!gi.matchManager.restoreSaveState(packet.name)) {
+          packetRouter.dispatch({ type: 'error', message: 'no save state named "' + packet.name + '"' });
+        }
+        return;
+      case 'delete_state': return void gi.matchManager.deleteSaveState(packet.name);
       default:
-        // Everything else (settings/leader/editor packets) has no handler
-        // in this build - the UI that would send them was dropped.
+        // Everything else (leader/editor packets) has no handler in this
+        // build - the UI that would send them was dropped.
         return;
     }
   }

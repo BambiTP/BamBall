@@ -42,6 +42,7 @@ function startPhysicsLoop() {
         if (settingsState.matchInfo.state !== 'paused') {
           snapshotRenderOrigins(game.players);
           entityReconciler.applySyncSteps(game.players);
+          applyJumps(game.players);
           movePlayers(game.players);
           applyForceFields(game.players, game.wells);
           physicsWorld.step(1 / 60);

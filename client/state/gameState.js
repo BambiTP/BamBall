@@ -34,6 +34,10 @@ var game = {
   switches: {},
   portals:  {},
 
+  // In-memory save-state slot names, kept in sync by saveStatesChanged
+  // packets - see engine/matchManager.js/local/controlPanel.js.
+  saveStateNames: [],
+
   // 'game' or 'editor', from the server on 'joined'. An editor room has no
   // match and lets anyone edit; shared code checks this rather than asking
   // the editor page, which the game page doesn't load.
@@ -88,6 +92,10 @@ function createPlayer(entity) {
     a: entity.a || 0,
 
     left: false, right: false, up: false, down: false,
+    wasUp: false, // edge-detects a fresh up-press for jump, vs. holding it
+    jumpsRemaining: physConfig.jumpCharges,
+
+    isPlayer: true, // lets the contact listener (physicsWorld.js) tell a player body from a wall body
 
     maxSpeed: entity.ms,
     accel:    entity.ac,

@@ -31,6 +31,10 @@ var actions = {
 
   changeMap: function (mapId) { socket.send(packetSchema.changeMap(mapId)); },
 
+  saveState:   function (name) { socket.send(packetSchema.saveState(name)); },
+  loadState:   function (name) { socket.send(packetSchema.loadState(name)); },
+  deleteState: function (name) { socket.send(packetSchema.deleteState(name)); },
+
   startMatch:  function () { socket.send(packetSchema.startMatch()); },
   endMatch:    function () { socket.send(packetSchema.endMatch()); },
   pauseMatch:  function () { socket.send(packetSchema.pauseMatch()); },

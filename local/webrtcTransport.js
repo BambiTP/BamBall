@@ -429,6 +429,7 @@ var webrtcTransport = (function () {
     physicsChanged:        packetBuilders.physicsChanged,
     playerPhysicsChanged:  packetBuilders.playerPhysicsChanged,
     tileSettingsChanged:   packetBuilders.tileSettingsChanged,
+    saveStatesChanged:     packetBuilders.saveStatesChanged,
     overlayStroke:         packetBuilders.overlayStroke,
     overlayUndo:           packetBuilders.overlayUndo,
     overlayClear:          packetBuilders.overlayClear,
@@ -690,6 +691,56 @@ var webrtcTransport = (function () {
       case 'end_match': {
         if (!isLeader(clientId)) return;
         gi.matchManager.endMatch('leaderEnded');
+        return;
+      }
+
+      // ---- leader-gated settings edits --------------------------------
+      // Each of these calls into matchManager, which mutates config/
+      // gameState directly and emits its own 'physicsChanged' /
+      // 'matchStateChanged' / etc - wireHostEngineEvents' EVENT_MAP already
+      // turns those into broadcasts, so nothing here sends a packet itself.
+      case 'update_physics': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change physics settings' }); return; }
+        gi.matchManager.updatePhysics(packet.settings);
+        return;
+      }
+      case 'update_player_physics': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change player settings' }); return; }
+        var targetPlayer = gi.gameState.getPlayer(packet.targetId);
+        if (!targetPlayer) return;
+        gi.matchManager.updatePlayerPhysics(targetPlayer, packet.settings);
+        return;
+      }
+      case 'update_settings': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change match settings' }); return; }
+        gi.matchManager.updateSettings(packet.settings);
+        return;
+      }
+      case 'update_tile_settings': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change tile settings' }); return; }
+        gi.matchManager.updateTileSettings(packet.x, packet.y, packet.settings);
+        return;
+      }
+      case 'changeMap': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change the map' }); return; }
+        switchMap(packet.mapId).catch(function (err) {
+          dispatch({ type: 'error', message: 'could not load map: ' + err.message });
+        });
+        return;
+      }
+      case 'save_state': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can save game states' }); return; }
+        gi.matchManager.captureSaveState(packet.name);
+        return;
+      }
+      case 'load_state': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can load game states' }); return; }
+        if (!gi.matchManager.restoreSaveState(packet.name)) dispatch({ type: 'error', message: 'no save state named "' + packet.name + '"' });
+        return;
+      }
+      case 'delete_state': {
+        if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can delete game states' }); return; }
+        gi.matchManager.deleteSaveState(packet.name);
         return;
       }
 

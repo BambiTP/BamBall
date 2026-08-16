@@ -12,6 +12,7 @@
 function wireGameStateEvents() {
   gameEvents.on('player:created', function (player, entity) {
     player.body = physicsWorld.createBall(entity.x, entity.y);
+    player.body.SetUserData(player); // player.isPlayer=true lets the contact listener spot it vs. a wall body
     // A player who is already dead when first seen (joining mid-respawn) is
     // frozen server-side, so its snapshot velocity is stale - same reasoning
     // as the deadChanged handler below.
@@ -58,6 +59,14 @@ function wireGameStateEvents() {
     if (player.container) player.container.alpha = player.dead ? 0.3 : 1;
     if (player.dead && !wasDead) {
       renderer.spawnBurst(player.x, player.y, player.team === 'blue' ? 0x3388ff : 0xff4433, 18);
+    }
+
+    // Mirrors the server's respawnPlayer resetting jumpsRemaining - a
+    // respawn is a dead stop, jump charges included, not whatever was left
+    // over from however they died.
+    if (!player.dead && wasDead) {
+      player.jumpsRemaining = physConfig.jumpCharges;
+      player.wasUp = false;
     }
   });
 

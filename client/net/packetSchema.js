@@ -51,6 +51,12 @@ var packetSchema = {
     return { type: 'changeMap', mapId };
   },
 
+  // In-memory-only game-state snapshots, keyed by leader-chosen name - see
+  // engine/matchManager.js's captureSaveState/restoreSaveState/deleteSaveState.
+  saveState(name)   { return { type: 'save_state', name }; },
+  loadState(name)   { return { type: 'load_state', name }; },
+  deleteState(name) { return { type: 'delete_state', name }; },
+
   startMatch()  { return { type: 'start_match' }; },
   endMatch()    { return { type: 'end_match' }; },
   pauseMatch()  { return { type: 'pause_match' }; },

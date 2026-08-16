@@ -18,8 +18,14 @@ function toggleMenu() {
 var lazyTabInit = {
   texturesPanel: function () { mountTexturePackPicker(document.getElementById('texturePackPicker'), { loggedIn: true }); },
   makerPanel: function () { initSettingsMaker(); },
+  controlPanel: function () { initControlPanel(); },
 };
 var lazyTabDone = {};
+
+// Set by renderTeams()/its solo fallback (leadership is roster-derived) -
+// read back by renderPauseToggle() when a bare matchInfo:changed event
+// fires with no roster info of its own attached.
+var lastKnownLeader = false;
 
 function switchMenuTab(tabId) {
   var buttons = document.querySelectorAll('.menuTabBtn');
@@ -123,6 +129,8 @@ function renderTeams() {
     var myEntry = game.roster.find(function (r) { return r.id === game.clientId; });
     var myLeader = !!(myEntry && myEntry.leader);
 
+    lastKnownLeader = myLeader;
+
     for (var i = 0; i < game.roster.length; i++) {
       var r = game.roster[i];
       var list = lists[r.team] || lists.spectator;
@@ -147,6 +155,7 @@ function renderTeams() {
     spectatorRow.textContent = 'Player (you)';
     if (lists.spectator) lists.spectator.appendChild(spectatorRow);
   }
+  lastKnownLeader = false;
   renderMatchControls(false);
 }
 
@@ -156,8 +165,55 @@ function renderTeams() {
 // end_match packets (local/webrtcTransport.js, node-host/hostCli.js).
 function renderMatchControls(myLeader) {
   var box = document.getElementById('matchControls');
-  if (!box) return;
-  box.style.display = myLeader ? '' : 'none';
+  if (box) box.style.display = myLeader ? '' : 'none';
+
+  // Whole Control tab is leader-only, same reasoning as #matchControls -
+  // its contents (live physics/match edits, map change, save states) are
+  // all leader-gated server-side too, so a non-leader seeing the tab at
+  // all would just be a dead end. If the tab happened to be open when
+  // leadership is lost (demoted mid-session), fall back to Teams instead
+  // of leaving an inaccessible panel on screen.
+  var controlTabBtn = document.querySelector('.menuTabBtn[data-tab="controlPanel"]');
+  if (controlTabBtn) {
+    controlTabBtn.classList.toggle('hidden', !myLeader);
+    if (!myLeader && controlTabBtn.classList.contains('active')) switchMenuTab('teamsPanel');
+  }
+
+  renderPauseToggle();
+}
+
+// Which of Pause/Resume applies right now, or null when neither does
+// (pregame/ended - toggling either would just get rejected server-side, so
+// don't even show a button that can't do anything). Only matchManager's own
+// state names appear here (see engine/matchManager.js's state machine) -
+// this has no state of its own, it's a pure read of settingsState.matchInfo.
+function pauseToggleMode() {
+  var state = settingsState.matchInfo.state;
+  if (state === 'live' || state === 'countdown' || state === 'overtime') return 'pause';
+  if (state === 'paused') return 'resume';
+  return null;
+}
+
+// Drives BOTH the in-menu Pause/Resume buttons and the persistent HUD
+// toggle (#hudPauseToggle, index.html - lives outside the Esc menu so a
+// leader never has to open the menu just to pause) from the one state read
+// above. lastKnownLeader is set by renderTeams()/its solo fallback, since
+// leadership is roster-derived and this can also be called from a pure
+// matchInfo:changed event that carries no roster info of its own.
+function renderPauseToggle() {
+  var mode = lastKnownLeader ? pauseToggleMode() : null;
+
+  var pauseBtn  = document.getElementById('matchPauseBtn');
+  var resumeBtn = document.getElementById('matchResumeBtn');
+  if (pauseBtn)  pauseBtn.classList.toggle('hidden', mode !== 'pause');
+  if (resumeBtn) resumeBtn.classList.toggle('hidden', mode !== 'resume');
+
+  var hudBtn = document.getElementById('hudPauseToggle');
+  if (!hudBtn) return;
+  hudBtn.classList.toggle('hidden', !mode);
+  if (!mode) return;
+  hudBtn.textContent = mode === 'pause' ? 'Pause' : 'Resume';
+  hudBtn.classList.toggle('isPaused', mode === 'resume');
 }
 
 function initMatchControls() {
@@ -166,11 +222,19 @@ function initMatchControls() {
   var resumeBtn = document.getElementById('matchResumeBtn');
   var resetBtn  = document.getElementById('matchResetBtn');
   var endBtn    = document.getElementById('matchEndBtn');
+  var hudBtn    = document.getElementById('hudPauseToggle');
   if (startBtn)  startBtn.addEventListener('click', function () { actions.startMatch(); });
   if (pauseBtn)  pauseBtn.addEventListener('click', function () { actions.pauseMatch(); });
   if (resumeBtn) resumeBtn.addEventListener('click', function () { actions.resumeMatch(); });
   if (resetBtn)  resetBtn.addEventListener('click', function () { actions.resetGame(); });
   if (endBtn)    endBtn.addEventListener('click', function () { actions.endMatch(); });
+  if (hudBtn) {
+    hudBtn.addEventListener('click', function () {
+      if (pauseToggleMode() === 'resume') actions.resumeMatch(); else actions.pauseMatch();
+    });
+  }
+
+  settingsEvents.on('matchInfo:changed', renderPauseToggle);
 }
 
 function initMenu() {

@@ -170,6 +170,14 @@ function initKeyboardInput() {
       return;
     }
 
+    // Unbound by default (see localSettings.js) - server rejects it for a
+    // non-leader anyway, so no client-side leadership check needed here.
+    if (isActionKey(event.key, 'pause')) {
+      event.preventDefault();
+      if (settingsState.matchInfo.state === 'paused') actions.resumeMatch(); else actions.pauseMatch();
+      return;
+    }
+
     var direction = keyMap[event.key];
     if (!direction || keyState[direction]) return;
 

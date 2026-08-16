@@ -146,6 +146,13 @@ const packetBuilders = {
     return { type: 'physicsChanged', settings, wells };
   },
 
+  // names: every save-state slot currently held in matchManager's
+  // in-memory Map, in no particular order - the client just renders the
+  // list, it never needs slot contents (see local/controlPanel.js).
+  saveStatesChanged(names) {
+    return { type: 'saveStatesChanged', names };
+  },
+
   // settings here is sparse (only PLAYER_KEYS the leader has explicitly
   // overridden for this one player) - the client already knows the
   // room-wide defaults from physicsChanged and computes the effective

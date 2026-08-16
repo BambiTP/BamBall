@@ -21,6 +21,7 @@ var LOCAL_SETTINGS_DEFAULTS = {
     menu:     ['Escape'],
     zoomIn:   ['=', '+'],
     zoomOut:  ['-'],
+    pause:    [], // unbound by default - opt-in, leader-only in practice (server rejects it for anyone else)
   },
   particles:    true,
   showDrawings: true,

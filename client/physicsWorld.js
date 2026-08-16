@@ -27,6 +27,9 @@ var physConfig = {
 
   floorFriction: 0,
 
+  jumpStrength: 7.5,
+  jumpCharges:  1,
+
   cameraZoom:     1,
   allowWheelZoom: false,
 };
@@ -57,6 +60,19 @@ class PhysicsWorld {
     }
 
     this.wallBodies = [];
+
+    // Only exists for gravity-mode jump refill (mirrors the server's
+    // category==='wall' reset in game/tiles/tileLogic.js) - this is NOT a
+    // general tile-dispatch system like the server's; prediction has no
+    // reason to know about pads/flags/etc, only "did a player touch a wall".
+    var listener = new Box2D.Dynamics.b2ContactListener();
+    listener.BeginContact = function (contact) {
+      var dataA = contact.GetFixtureA().GetBody().GetUserData();
+      var dataB = contact.GetFixtureB().GetBody().GetUserData();
+      if (dataA && dataA.isPlayer && dataB && dataB.isWall) dataA.jumpsRemaining = physConfig.jumpCharges;
+      if (dataB && dataB.isPlayer && dataA && dataA.isWall) dataB.jumpsRemaining = physConfig.jumpCharges;
+    };
+    this.world.SetContactListener(listener);
   }
 
   setGravity(x, y) {
@@ -89,6 +105,7 @@ class PhysicsWorld {
     bodyDef.type = b2Body.b2_staticBody;
     bodyDef.position.Set(x + 0.5, y + 0.5);
     var body = this.world.CreateBody(bodyDef);
+    body.SetUserData({ isWall: true });
 
     var fixDef = new b2FixtureDef();
 

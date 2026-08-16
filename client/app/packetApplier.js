@@ -219,6 +219,11 @@ var packetApplier = {
     }
   },
 
+  saveStatesChanged: function (packet) {
+    game.saveStateNames = packet.names || [];
+    appEvents.emit('saveStates:changed', game.saveStateNames);
+  },
+
   playerPhysicsChanged: function (packet) {
     settingsState.setPlayerOverrides(packet.playerId, packet.settings);
 

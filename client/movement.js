@@ -2,6 +2,28 @@
 // formula (shared/movement.js). This is the ONLY place the client computes
 // player acceleration - loop.js calls this, nothing else duplicates the math.
 
+// Mirrors the server's physicsHelpers.applyJumps (game/physicsHelpers.js) -
+// same edge-trigger-on-up, same charge consumption - so a jump fires the
+// instant it's pressed instead of waiting on the next snapshot. Runs before
+// movePlayers each tick, same order as the server's tick(), so the normal
+// accel/damping pass still applies on top the same frame.
+function applyJumps(players) {
+  if (settingsState.movementFrozen()) return;
+
+  for (var i = 0; i < players.length; i++) {
+    var p = players[i];
+    if (p.dead || p.matchFrozen) continue;
+
+    var pressedNow = !!p.up && !p.wasUp;
+    p.wasUp = !!p.up;
+    if (!pressedNow || p.jumpsRemaining <= 0) continue;
+
+    var vel = physicsWorld.getVelocity(p.body);
+    physicsWorld.setVelocity(p.body, vel.x, -physConfig.jumpStrength);
+    p.jumpsRemaining -= 1;
+  }
+}
+
 function movePlayers(players) {
   if (settingsState.movementFrozen()) return;
 

@@ -570,6 +570,107 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
 
   emitter.on('capture', checkCaptureWinConditions);
 
+  // ---- save states ------------------------------------------------------
+  // In-memory only, keyed by leader-chosen name, scoped to this room's
+  // lifetime (this Map lives in matchManager's own closure - one per
+  // GameInstance, same as everything else here). Deliberately NOT
+  // persisted anywhere: this exists for rapid iterate-test-iterate physics
+  // tuning within a single session, not as a durable save file - see
+  // engine/officialPresets.js/settingsMaker.js for the "durable, portable"
+  // half of that spectrum.
+  //
+  // Restore leaves flag-carrying alone rather than trying to reconstruct
+  // it (gameHelpers.returnFlag puts every flag back home first) - flag
+  // state is a small state machine of its own (carrier, dropped position,
+  // home) and getting it wrong silently would be worse than not
+  // attempting it. Position/velocity/dead-state/scores/map-dynamic-state
+  // is the part this feature actually exists for.
+  const saveStates = new Map();
+
+  function listSaveStates() {
+    return [...saveStates.keys()];
+  }
+
+  function captureSaveState(name) {
+    const players = gameState.players.map(p => ({
+      id: p.id, x: p.x, y: p.y, a: p.a, lx: p.lx, ly: p.ly, dead: p.dead,
+    }));
+
+    const powerupPads = [];
+    for (const row of gameState.dataMap) {
+      for (const entry of row ?? []) {
+        if (entry?.category === 'powerup') powerupPads.push({ x: entry.x, y: entry.y, id: entry.id });
+      }
+    }
+
+    saveStates.set(name, {
+      players,
+      scores:        { ...gameState.scores },
+      physics:       getPhysics(),
+      matchSettings: { ...gameState.matchSettings },
+      switches:      JSON.parse(JSON.stringify(gameState.switches)),
+      portals:       JSON.parse(JSON.stringify(gameState.portals)),
+      tileOverrides: JSON.parse(JSON.stringify(gameState.tileOverrides)),
+      wells:         JSON.parse(JSON.stringify(gameState.wells)),
+      powerupPads,
+    });
+
+    emitter.emit('saveStatesChanged', listSaveStates());
+    return true;
+  }
+
+  function restoreSaveState(name) {
+    const saved = saveStates.get(name);
+    if (!saved) return false;
+
+    // Settings first - bodies need correct physics before repositioning,
+    // same ordering movePlayers/step already relies on every tick.
+    updatePhysics(saved.physics);
+    gameState.matchSettings = validateSettings(saved.matchSettings, gameState.matchSettings);
+
+    for (const player of gameState.players) gameHelpers.returnFlag(player);
+
+    for (const savedPlayer of saved.players) {
+      const player = gameState.getPlayer(savedPlayer.id);
+      if (!player || !player.body) continue; // disconnected since the save - nothing to restore onto
+
+      physicsWorld.setPosition(player.body, savedPlayer.x, savedPlayer.y);
+      physicsWorld.setVelocity(player.body, savedPlayer.lx, savedPlayer.ly);
+      player.body.SetAngle(savedPlayer.a);
+      player.body.SetAngularVelocity(0);
+      physicsWorld.setSensor(player.body, savedPlayer.dead);
+
+      player.x = savedPlayer.x; player.y = savedPlayer.y; player.a = savedPlayer.a;
+      player.lx = savedPlayer.lx; player.ly = savedPlayer.ly;
+      player.dead = savedPlayer.dead;
+      player.snapCount = (player.snapCount || 0) + 1;
+      emitter.emit('update', player);
+    }
+
+    gameState.scores        = { ...saved.scores };
+    gameState.switches      = JSON.parse(JSON.stringify(saved.switches));
+    gameState.portals       = JSON.parse(JSON.stringify(saved.portals));
+    gameState.tileOverrides = JSON.parse(JSON.stringify(saved.tileOverrides));
+    gameState.wells         = JSON.parse(JSON.stringify(saved.wells));
+
+    // Pad tile ids restore directly; their pending respawn timers don't -
+    // not easily serializable, so anything restored to empty just gets a
+    // fresh spawn armed the same way a match reset already does, instead
+    // of trying to replay the exact countdown that was left mid-flight.
+    for (const pad of saved.powerupPads) gameHelpers.scheduleTileChange(pad.x, pad.y, pad.id);
+    gameHelpers.scheduleAllPowerupSpawns();
+
+    emitter.emit('score', gameState.scores);
+    emitter.emit('matchStateChanged');
+    return true;
+  }
+
+  function deleteSaveState(name) {
+    const existed = saveStates.delete(name);
+    if (existed) emitter.emit('saveStatesChanged', listSaveStates());
+    return existed;
+  }
+
   return {
     startMatch,
     endMatch,
@@ -588,6 +689,10 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
     getPlayerKeys: () => PLAYER_KEYS,
     updateTileSettings,
     getTileKeys: () => TILE_KEYS,
+    listSaveStates,
+    captureSaveState,
+    restoreSaveState,
+    deleteSaveState,
     tick,
   };
 };
