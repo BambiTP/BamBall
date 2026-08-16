@@ -5,12 +5,15 @@ const { tileSetting } = (typeof require === 'function') ? require('./settingsRes
 
 var createPhysicsHelpers = function(physicsWorld, gameState, config) {
   return {
-    // Gravity-mode jump: edge-triggered on a fresh up-press (not held), sets
-    // vy directly rather than accel-nudging it. Runs before movePlayers each
-    // tick so the normal accel/damping pass still applies on top the same
-    // frame - holding down while airborne pulls you down faster, same as
-    // any other frame. wasUp/jumpsRemaining are per-player so this is a
-    // no-op (0 charges) until something (wall contact) grants one.
+    // Gravity-mode jump: edge-triggered on a fresh up-press (not held), adds
+    // -jumpStrength onto whatever vy the player already has rather than
+    // overwriting it - falling into a jump snaps up harder, and stacking a
+    // second charge mid-rise launches higher instead of just resetting to
+    // the same launch speed. Runs before movePlayers each tick so the
+    // normal accel/damping pass still applies on top the same frame -
+    // holding down while airborne pulls you down faster, same as any other
+    // frame. wasUp/jumpsRemaining are per-player so this is a no-op (0
+    // charges) until something (wall contact) grants one.
     applyJumps() {
       for (const p of gameState.players) {
         if (p.dead || p.frozen || p.matchFrozen) continue;
@@ -20,7 +23,7 @@ var createPhysicsHelpers = function(physicsWorld, gameState, config) {
         if (!pressedNow || p.jumpsRemaining <= 0) continue;
 
         const vel = physicsWorld.getVelocity(p.body);
-        physicsWorld.setVelocity(p.body, vel.x, -config.jumpStrength);
+        physicsWorld.setVelocity(p.body, vel.x, vel.y - config.jumpStrength);
         p.jumpsRemaining -= 1;
       }
     },

@@ -5,12 +5,13 @@ const gameConfig = {
   gravityX: 0,
   gravityY: 0,
 
-  // Gravity-mode jump: pressing up (edge-triggered, not held) sets vy
-  // directly to -jumpStrength instead of accel-nudging it, then normal
-  // movement keeps applying accel on top every frame same as always -
-  // holding down mid-air still pulls you down faster. Charges refill on
-  // touching a wall. Both values are untested guesses (3 TPU/s -> tiles,
-  // 1 charge) pending real-game comparison.
+  // Gravity-mode jump: pressing up (edge-triggered, not held) adds
+  // -jumpStrength onto the current vy instead of accel-nudging it or
+  // overwriting it outright, then normal movement keeps applying accel on
+  // top every frame same as always - holding down mid-air still pulls you
+  // down faster. Charges refill on touching a wall. Both values are
+  // untested guesses (3 TPU/s -> tiles, 1 charge) pending real-game
+  // comparison.
   jumpStrength: 7.5,
   jumpCharges:  1,
 
