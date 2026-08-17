@@ -130,6 +130,29 @@ const PHYSICS_SCHEMA = [
   { key: 'gravityWellFalloff',  scope: 'physics', type: 'enum', options: ['linear', 'constant', 'inverseSquare'], category: 'Gravity Wells', hooks: ['gravityWells'], tileScoped: true, tileCategories: ['gravityWell'] },
   { key: 'gravityWellMode',     scope: 'physics', type: 'enum', options: ['attract', 'repel'], category: 'Gravity Wells', hooks: ['gravityWells'], tileScoped: true, tileCategories: ['gravityWell'] },
 
+  // Eggball - a single catchable/throwable projectile with its own scoring
+  // rules, room-wide (not per-player/per-tile - there's only ever one of
+  // it). eggballEnabled is its own toggle rather than "any non-default
+  // value here turns it on" (same reasoning as kothPowerup/the Powerups
+  // toggles above) - the rules differ enough from standard play that a
+  // leader needs an explicit on/off. hooks:['eggballToggle'] spawns/
+  // despawns the egg immediately on flip, same live-effect pattern as
+  // gravity/gravityWells above, instead of only taking effect on the next
+  // match start. No separate catch-radius setting - catching is real
+  // Box2D collision with the egg's own body (engine/eggballLogic.js's
+  // catchEggball), so eggballRadius doubles as the catch distance. See
+  // engine/gameConfig.js for what each of the keys below actually controls.
+  { key: 'eggballEnabled',           scope: 'physics', type: 'bool',   category: 'Eggball', hooks: ['eggballToggle'] },
+  { key: 'eggballRadius',            scope: 'physics', type: 'number', category: 'Eggball', unit: 'tiles' },
+  { key: 'eggballThrowStrength',     scope: 'physics', type: 'number', category: 'Eggball', unit: 'tiles/s' },
+  { key: 'eggballSpeed',             scope: 'physics', type: 'number', category: 'Eggball', unit: 'tiles/s' },
+  { key: 'eggballBounceBonusWindow', scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball', scale: 1000, unit: 's' },
+  { key: 'eggballDensity',           scope: 'physics', type: 'number', category: 'Eggball' },
+  { key: 'eggballFriction',          scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball' },
+  { key: 'eggballRestitution',       scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball' },
+  { key: 'eggballLinearDamping',     scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball' },
+  { key: 'eggballAngularDamping',    scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball' },
+
 ];
 
 // One entry per powerupTypes.js pad type - a new toggleable powerup only

@@ -87,6 +87,11 @@ const packetBuilders = {
         return acc;
       }, {}),
       matchSettingsDefaults,
+      eggball: {
+        carrierId: gameState.eggball.carrierId,
+        x: gameState.eggball.x, y: gameState.eggball.y,
+        vx: gameState.eggball.vx, vy: gameState.eggball.vy,
+      },
       ...mapData,
     };
   },
@@ -120,6 +125,18 @@ const packetBuilders = {
 
   capture(player) {
     return { type: 'capture', data: serializePlayer(player) };
+  },
+
+  // Room-wide, not per-viewer culled like the ordinary player snapshot -
+  // there's only ever one egg and every client needs to see it. carrierId
+  // set means "render it at that player's own position, nothing else here
+  // matters"; carrierId null + x/y/vx/vy means it's in free flight. Fired
+  // on every state change (spawn/throw/catch/despawn) AND every physics
+  // tick while free-flying (engine/eggballLogic.js's syncEggball), so the
+  // client can extrapolate its motion the same way it already does for
+  // players between updates.
+  eggballChanged(egg) {
+    return { type: 'eggballChanged', carrierId: egg.carrierId, x: egg.x, y: egg.y, vx: egg.vx, vy: egg.vy };
   },
 
   // The roster: everyone connected to the room, not just those spawned in

@@ -29,6 +29,22 @@ function initFireInput() {
   canvas.addEventListener('mousedown', function (event) {
     if (event.button !== 0 || typingInField()) return;
 
+    // Carrying the egg: a click throws it toward wherever was clicked
+    // (server re-derives the actual direction from this vector, see
+    // engine/eggballLogic.js's throwEggball) instead of the leader-select/
+    // camera-pan behavior below - actually playing takes priority over
+    // those while holding it. No-op server-side if eggballEnabled is off
+    // or this client isn't really the carrier (game.eggball.carrierId is
+    // just the last broadcast, and could in theory be stale for one frame).
+    if (game.myId !== null && game.eggball.carrierId === game.myId) {
+      var carrier = getPlayer(game.myId);
+      if (carrier) {
+        var throwWorld = screenToWorld(event.clientX, event.clientY);
+        actions.throwEgg(throwWorld.x - carrier.x, throwWorld.y - carrier.y);
+        return;
+      }
+    }
+
     // Clicking a ball selects that player, opening the per-player settings
     // panel. Leader-only, since that panel's controls are - this used to be
     // gated behind edit mode, which no longer exists.

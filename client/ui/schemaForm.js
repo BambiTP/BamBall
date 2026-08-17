@@ -1,9 +1,12 @@
 // schemaForm.js - generic settings-panel builder used by local/
 // controlPanel.js's Settings tab. Every row is driven entirely by
 // settingsState.settingsSchema (sent once by the server) - a new setting
-// added server-side needs zero new code here. Each row applies itself the
-// moment it changes (buildSettingRow's onChange) - there's no separate
-// collect-the-diff-and-Apply step to duplicate per panel.
+// added server-side needs zero new code here. A row does NOT apply as you
+// type - editing the input just edits the input, same as any ordinary
+// form; its own Apply button (or hitting Enter in it) is what actually
+// sends that one key, and its Reset button puts the field back to its
+// shipped default (engine/gameConfig.js for physics, engine/
+// matchSettings.js's DEFAULT_SETTINGS for match) and applies that.
 
 function schemaList(scope) {
   return (settingsState.settingsSchema && settingsState.settingsSchema[scope]) || [];
@@ -43,6 +46,37 @@ function fromDisplayValue(entry, raw) {
   return entry && entry.scale ? raw * entry.scale : raw;
 }
 
+// The value a Reset click puts back - the room's shipped starting value,
+// not "whatever was last applied." NOT gameConfig itself - matchManager.js
+// mutates that object in place on every updatePhysics() (Object.assign(
+// config, next)), so by the time a leader has changed anything, gameConfig
+// already IS the current live value, not the default. settingsState.
+// physicsDefaults is the snapshot matchManager took of it before any
+// mutation could happen (getPhysicsDefaults(), sent once in the schema
+// packet - see client/state/settingsState.js), so it stays correct no
+// matter how many edits have happened since. matchSettingsDefaults doesn't
+// have this problem (engine/matchSettings.js's validateSettings always
+// spreads into a new object, never mutates DEFAULT_SETTINGS), but reading
+// it from the same synced packet keeps both lookups symmetric. Falls back
+// to the live globals only if asked before the schema packet has arrived.
+function defaultValueFor(scope, key) {
+  if (scope === 'physics') {
+    if (settingsState.physicsDefaults) return settingsState.physicsDefaults[key];
+    return typeof gameConfig !== 'undefined' ? gameConfig[key] : undefined;
+  }
+  if (scope === 'match') {
+    if (settingsState.matchSettingsDefaults) return settingsState.matchSettingsDefaults[key];
+    return typeof MatchSettings !== 'undefined' ? MatchSettings.DEFAULT_SETTINGS[key] : undefined;
+  }
+  return undefined;
+}
+
+function setInputDisplayValue(entry, input, raw) {
+  if (input.type === 'checkbox') { input.checked = !!raw; return; }
+  if (entry && entry.type === 'enum') { input.value = raw; return; }
+  input.value = toDisplayValue(entry, raw);
+}
+
 // "gravityWellFalloff" -> "Gravity Well Falloff", purely cosmetic.
 function formatKey(key) {
   return key.replace(/([A-Z])/g, ' $1').replace(/^./, function (c) { return c.toUpperCase(); });
@@ -65,18 +99,24 @@ function readInputValue(scope, key, input) {
   return isFinite(value) ? value : undefined;
 }
 
-// onChange(key, value), if given, fires the moment this one field commits
-// (a checkbox/select's 'change', or a number field's 'change' - i.e. on
-// blur/Enter, not every keystroke) - a leader edits a field and it applies
-// immediately, no separate Apply step for the per-field case.
-function buildSettingRow(scope, key, values, onChange) {
+// onApply(key, value), if given, is called only from this row's own Apply
+// button (or Enter in the input) or its Reset button - never just from
+// editing the input, so a leader can type into several fields without any
+// of them going live until they actually say so.
+function buildSettingRow(scope, key, values, onApply) {
   var entry = schemaEntryFor(scope, key);
-  var row = document.createElement('label');
+  // A plain div, not a <label> wrapping the input - this row now also
+  // holds Apply/Reset buttons, and a <label> would toggle a checkbox
+  // input on ANY click inside it, buttons included.
+  var row = document.createElement('div');
   row.className = 'settingRow';
 
   var name = document.createElement('span');
   name.textContent = formatKey(key) + (entry && entry.unit ? ' (' + entry.unit + ')' : '');
   row.appendChild(name);
+
+  var controls = document.createElement('span');
+  controls.className = 'settingRowControls';
 
   var input;
   var raw = values[key];
@@ -101,15 +141,42 @@ function buildSettingRow(scope, key, values, onChange) {
     input.value = toDisplayValue(entry, raw);
   }
   input.setAttribute('data-key', key);
-  row.appendChild(input);
+  controls.appendChild(input);
 
-  if (onChange) {
-    input.addEventListener('change', function () {
+  if (onApply) {
+    function applyCurrentValue() {
       var value = readInputValue(scope, key, input);
-      if (value !== undefined) onChange(key, value);
+      if (value !== undefined) onApply(key, value);
+    }
+
+    // Enter commits without reaching for the mouse - matches every other
+    // "type then confirm" input in this app (chat, join-by-code password).
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') applyCurrentValue();
     });
+
+    var applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.className = 'settingApplyBtn';
+    applyBtn.textContent = 'Apply';
+    applyBtn.addEventListener('click', applyCurrentValue);
+    controls.appendChild(applyBtn);
+
+    var resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'settingResetBtn';
+    resetBtn.textContent = 'Reset';
+    resetBtn.title = 'Reset to default';
+    resetBtn.addEventListener('click', function () {
+      var def = defaultValueFor(scope, key);
+      if (def === undefined) return;
+      setInputDisplayValue(entry, input, def);
+      onApply(key, def);
+    });
+    controls.appendChild(resetBtn);
   }
 
+  row.appendChild(controls);
   return row;
 }
 
@@ -118,7 +185,7 @@ function buildSettingRow(scope, key, values, onChange) {
 // without it (Match panel), categories render as inline headers. Anything
 // not mentioned by a category still renders, so a new server setting is
 // never silently dropped.
-function buildSettingsPanel(rowsEl, scope, values, subTabsEl, onChange) {
+function buildSettingsPanel(rowsEl, scope, values, subTabsEl, onApply) {
   rowsEl.textContent = '';
 
   var shown = {};
@@ -139,7 +206,7 @@ function buildSettingsPanel(rowsEl, scope, values, subTabsEl, onChange) {
 
     for (var i = 0; i < keys.length; i++) {
       shown[keys[i]] = true;
-      var row = buildSettingRow(scope, keys[i], values, onChange);
+      var row = buildSettingRow(scope, keys[i], values, onApply);
       if (subTabsEl) row.setAttribute('data-category', catName);
       rowsEl.appendChild(row);
     }
@@ -148,7 +215,7 @@ function buildSettingsPanel(rowsEl, scope, values, subTabsEl, onChange) {
   var hasOther = false;
   for (var key in values) {
     if (shown[key]) continue;
-    var extraRow = buildSettingRow(scope, key, values, onChange);
+    var extraRow = buildSettingRow(scope, key, values, onApply);
     if (subTabsEl) {
       extraRow.setAttribute('data-category', 'Other');
       hasOther = true;

@@ -71,6 +71,7 @@ var localTransport = (function () {
     connectionsChanged:    packetBuilders.connections,
     spawnPointsChanged:    packetBuilders.spawnPoints,
     capture:               packetBuilders.capture,
+    eggballChanged:        packetBuilders.eggballChanged,
     physicsChanged:        packetBuilders.physicsChanged,
     playerPhysicsChanged:  packetBuilders.playerPhysicsChanged,
     tileSettingsChanged:   packetBuilders.tileSettingsChanged,
@@ -242,6 +243,12 @@ var localTransport = (function () {
         if (!player || player.dead || player.frozen || player.matchFrozen) return;
         var affected = gi.gameHelpers.detonateRollingBomb(player);
         if (affected) gi.emitter.emit('update', affected);
+        return;
+      }
+      case 'throwEgg': {
+        var throwPlayer = gi.gameState.getPlayer(localId);
+        if (!throwPlayer || throwPlayer.dead || throwPlayer.frozen || throwPlayer.matchFrozen) return;
+        gi.gameHelpers.throwEggball(throwPlayer, Number(packet.dirX) || 0, Number(packet.dirY) || 0);
         return;
       }
       case 'chat': {

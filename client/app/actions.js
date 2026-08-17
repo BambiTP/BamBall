@@ -23,6 +23,7 @@ var actions = {
   },
 
   detonateBomb: function () { socket.send(packetSchema.detonateBomb()); },
+  throwEgg:     function (dirX, dirY) { socket.send(packetSchema.throwEgg(dirX, dirY)); },
 
   setEditMode: function (on) { socket.send(packetSchema.setEditMode(on)); },
 

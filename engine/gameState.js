@@ -67,6 +67,21 @@ class GameState {
     // top of whatever tile sprite is there, so a future texture-pack
     // system underneath stays compatible.
     this.tileOverlayStrokes = {};
+
+    // Eggball mode's one projectile (engine/eggballLogic.js). carrierId set
+    // means a player is holding it (its position is just that player's
+    // position - the client renders it there, nothing here tracks a
+    // separate x/y while held). body/x/y/vx/vy are only meaningful while
+    // thrown (carrierId null, body set) - a real Box2D body so it bounces
+    // off walls (and catches on players) using real collision, same as
+    // everything else solid. Always present (not null) so nothing else has
+    // to null-check the whole object, only its fields.
+    this.eggball = {
+      carrierId:      null,
+      body:           null,
+      x: 0, y: 0, vx: 0, vy: 0,
+      lastBounceStep: null,  // gameState.stepCount at the last wall bounce, or null
+    };
   }
 
   getPlayer(id) {

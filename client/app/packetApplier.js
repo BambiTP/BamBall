@@ -106,6 +106,8 @@ var packetApplier = {
       phaseStartStep: packet.phaseStartStep,
     });
 
+    if (packet.eggball) game.eggball = packet.eggball;
+
     appEvents.emit('leader:changed');
     appEvents.emit('map:changed', packet);
   },
@@ -223,6 +225,15 @@ var packetApplier = {
   saveStatesChanged: function (packet) {
     game.saveStateNames = packet.names || [];
     appEvents.emit('saveStates:changed', game.saveStateNames);
+  },
+
+  // Room-wide, not per-viewer culled - see engine/packetBuilders.js's
+  // eggballChanged for why. Fires on every state change (spawn/throw/
+  // catch) and every tick while free-flying, so this is intentionally just
+  // a store-and-redraw with no interpolation of its own yet - client/
+  // render/eggballRenderer.js draws straight from game.eggball each frame.
+  eggballChanged: function (packet) {
+    game.eggball = { carrierId: packet.carrierId, x: packet.x, y: packet.y, vx: packet.vx, vy: packet.vy };
   },
 
   playerPhysicsChanged: function (packet) {

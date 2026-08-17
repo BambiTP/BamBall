@@ -427,6 +427,7 @@ var webrtcTransport = (function () {
     connectionsChanged:    packetBuilders.connections,
     spawnPointsChanged:    packetBuilders.spawnPoints,
     capture:               packetBuilders.capture,
+    eggballChanged:        packetBuilders.eggballChanged,
     physicsChanged:        packetBuilders.physicsChanged,
     playerPhysicsChanged:  packetBuilders.playerPhysicsChanged,
     tileSettingsChanged:   packetBuilders.tileSettingsChanged,
@@ -597,6 +598,12 @@ var webrtcTransport = (function () {
         if (!pl || pl.dead || pl.frozen || pl.matchFrozen) return;
         var affected = gi.gameHelpers.detonateRollingBomb(pl);
         if (affected) gi.emitter.emit('update', affected);
+        return;
+      }
+      case 'throwEgg': {
+        var throwPl = gi.gameState.getPlayer(clientId);
+        if (!throwPl || throwPl.dead || throwPl.frozen || throwPl.matchFrozen) return;
+        gi.gameHelpers.throwEggball(throwPl, Number(packet.dirX) || 0, Number(packet.dirY) || 0);
         return;
       }
       case 'chat': {

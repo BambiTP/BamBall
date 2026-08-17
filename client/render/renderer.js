@@ -387,6 +387,8 @@ class Renderer {
           player.sprites.ball.rotation = a;
         }
 
+        this.updateEggball();
+
         // Rolling bomb's flash breathes via a sine wave on alpha instead of
         // being animated through the particle system.
         for (const player of game.players) {

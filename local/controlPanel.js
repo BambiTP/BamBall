@@ -1,20 +1,21 @@
 // controlPanel.js - the Settings tab: the one place a leader configures a
-// match, live. Official one-click presets, a deterministic settings code
-// (save the current configuration, or load someone else's by pasting their
-// code back in), a Fortunate Maps id for the map, live physics/match
-// settings, and in-memory save states. Leader-only - menu.js hides the
-// whole tab and its button otherwise (renderMatchControls), and every
-// action here is also leader-gated server-side (webrtcTransport.js/
-// hostCli.js/localTransport.js), so this file never has to duplicate that
-// check - a rejected action just shows the 'error' packet's message like
-// everything else does.
+// match, live. Local one-click presets (local/localPresets.js - saved in
+// this browser, not an account), a deterministic settings code (save the
+// current configuration, or load someone else's by pasting their code back
+// in), a Fortunate Maps id for the map, live physics/match settings, and
+// in-memory save states. Leader-only - menu.js hides the whole tab and its
+// button otherwise (renderMatchControls), and every action here is also
+// leader-gated server-side (webrtcTransport.js/hostCli.js/localTransport.js),
+// so this file never has to duplicate that check - a rejected action just
+// shows the 'error' packet's message like everything else does.
 //
 // Edits settingsState.physics / settingsState.matchInfo.settings, the
 // room's real running values - there's no separate "authored file" concept
-// here, and no Apply-and-batch step either: a preset, a settings code, and
-// a single field (client/ui/schemaForm.js's buildSettingRow onChange) all
-// apply the instant they fire, straight to matchManager via
-// actions.updatePhysics/updateSettings.
+// here. A preset or a settings code replaces the whole configuration and
+// applies immediately; a single physics/match field does NOT - it only
+// applies when its own Apply button fires (client/ui/schemaForm.js's
+// buildSettingRow), and its Reset button puts just that field back to its
+// shipped default and applies that instead.
 
 // Recursively sorts object keys before JSON.stringify-ing, so the same
 // settings always produce the same string (and therefore the same code)
@@ -44,28 +45,29 @@ function hashSettingsCode(bundle) {
 
 function initControlPanel() {
   // ---- live physics + match settings ------------------------------------
-  // No Apply button, no "edit a bunch then commit" step - every field
-  // applies itself the instant it changes (buildSettingRow's onChange, see
-  // client/ui/schemaForm.js), straight to matchManager via
-  // actions.updatePhysics/updateSettings. Since nothing here ever sits in
-  // an "edited but not yet sent" state, it's also always safe to rebuild
-  // the whole form from settingsState the moment ANYTHING changes it -
-  // this leader's own edit, another leader's, a preset, or a settings-code
-  // load - so the display never has a stale value sitting in it.
+  // Builds once, from whatever's live right now - deliberately NOT
+  // refreshed every time settingsState.physics/matchInfo.settings changes,
+  // since a leader can be mid-edit on several fields at once (typed, not
+  // yet Applied) and an auto-rebuild off some unrelated change (another
+  // leader's own edit, this leader's own Apply on a DIFFERENT field) would
+  // yank those unsent edits right out from under them. The one time a
+  // full rebuild off settingsState IS correct - a preset/code load
+  // replacing the whole configuration - goes through
+  // scheduleRebuildOnNextSync() below instead of a permanent subscription.
 
   var physRows  = document.getElementById('controlPhysicsRows');
   var physTabs  = document.getElementById('controlPhysicsSubTabs');
   var matchRows = document.getElementById('controlMatchRows');
   var status    = document.getElementById('controlSettingsStatus');
 
-  function onPhysicsFieldChange(key, value) {
+  function onPhysicsFieldApply(key, value) {
     var partial = {};
     partial[key] = value;
     actions.updatePhysics(partial);
     status.textContent = 'Applied ' + key + '.';
   }
 
-  function onMatchFieldChange(key, value) {
+  function onMatchFieldApply(key, value) {
     var partial = {};
     partial[key] = value;
     actions.updateSettings(partial);
@@ -73,35 +75,98 @@ function initControlPanel() {
   }
 
   function buildForms() {
-    buildSettingsPanel(physRows, 'physics', settingsState.physics, physTabs, onPhysicsFieldChange);
-    buildSettingsPanel(matchRows, 'match', settingsState.matchInfo.settings, null, onMatchFieldChange);
+    buildSettingsPanel(physRows, 'physics', settingsState.physics, physTabs, onPhysicsFieldApply);
+    buildSettingsPanel(matchRows, 'match', settingsState.matchInfo.settings, null, onMatchFieldApply);
   }
 
   if (settingsState.settingsSchema) buildForms();
   else settingsEvents.on('schema:loaded', buildForms);
-  settingsEvents.on('physics:changed', buildForms);
-  settingsEvents.on('matchInfo:changed', buildForms);
 
-  // A preset/code bundle is { physics?, match?, mapId? } - applies whatever
-  // it has immediately, same mechanism as a single field's onChange above.
-  // The forms above refresh on their own via the physics:changed/
-  // matchInfo:changed subscriptions once these round-trip.
+  // actions.updatePhysics/updateSettings (below and in onXFieldApply above)
+  // are fire-and-forget packet sends (client/app/actions.js) - the room's
+  // settingsState only actually reflects them once the host's broadcast
+  // round-trips back through packetApplier, which is what physics:changed/
+  // matchInfo:changed mark. rebuildArmed stays false the rest of the time
+  // (see the big comment above) so those two events don't turn back into a
+  // permanent auto-rebuild; a bundle apply arms it for a few seconds, long
+  // enough to catch the round trip, then it disarms itself again.
+  var rebuildArmed = false;
+  var rebuildDisarmTimer = null;
+  settingsEvents.on('physics:changed', function () { if (rebuildArmed) buildForms(); });
+  settingsEvents.on('matchInfo:changed', function () { if (rebuildArmed) buildForms(); });
+
+  function scheduleRebuildOnNextSync() {
+    rebuildArmed = true;
+    clearTimeout(rebuildDisarmTimer);
+    rebuildDisarmTimer = setTimeout(function () { rebuildArmed = false; }, 3000);
+  }
+
+  // A preset/code bundle is { physics?, match?, mapId? } - unlike a single
+  // field's Apply above, loading one is a deliberate "replace everything"
+  // action, so it's fine (and the whole point) for it to blow away any
+  // in-progress unapplied edits sitting in the forms below.
   function applyBundle(bundle) {
     if (!bundle) return;
+    scheduleRebuildOnNextSync();
     if (bundle.mapId)   actions.changeMap(bundle.mapId);
     if (bundle.physics) actions.updatePhysics(bundle.physics);
     if (bundle.match)   actions.updateSettings(bundle.match);
   }
 
-  // ---- official presets ---------------------------------------------------
+  // ---- presets --------------------------------------------------------------
+  // Local to this browser (local/localPresets.js), not an account/server
+  // thing - see the Settings Code section below for the server-backed,
+  // shareable alternative. Seeded with three starting presets (Standard/
+  // Gravity/Eggball) the first time this browser opens this tab; after
+  // that, save-over-the-same-name to update one or the × to delete it,
+  // same as any preset you add yourself.
 
-  var presetRow = document.getElementById('controlPresetRow');
-  (OfficialPresets.OFFICIAL_PRESETS || []).forEach(function (preset) {
-    var btn = document.createElement('button');
-    btn.className = 'menuBtn';
-    btn.textContent = preset.name;
-    btn.addEventListener('click', function () { applyBundle(preset.settings); });
-    presetRow.appendChild(btn);
+  var presetRow      = document.getElementById('controlPresetRow');
+  var presetNameInput = document.getElementById('controlPresetName');
+  var presetStatus   = document.getElementById('controlPresetStatus');
+
+  function renderPresets() {
+    presetRow.textContent = '';
+    LocalPresets.loadLocalPresets().forEach(function (preset) {
+      var pill = document.createElement('span');
+      pill.className = 'presetPill';
+
+      var applyBtn = document.createElement('button');
+      applyBtn.className = 'menuBtn';
+      applyBtn.textContent = preset.name;
+      applyBtn.addEventListener('click', function () {
+        applyBundle(preset.settings);
+        presetStatus.textContent = 'Applied "' + preset.name + '".';
+      });
+      pill.appendChild(applyBtn);
+
+      var deleteBtn = document.createElement('button');
+      deleteBtn.className = 'menuBtn presetDeleteBtn';
+      deleteBtn.type = 'button';
+      deleteBtn.textContent = '×';
+      deleteBtn.title = 'Delete preset';
+      deleteBtn.addEventListener('click', function () {
+        LocalPresets.deleteLocalPreset(preset.id);
+        renderPresets();
+      });
+      pill.appendChild(deleteBtn);
+
+      presetRow.appendChild(pill);
+    });
+  }
+  renderPresets();
+
+  document.getElementById('controlSavePresetBtn').addEventListener('click', function () {
+    var name = presetNameInput.value.trim();
+    if (!name) { presetStatus.textContent = 'Name the preset first.'; return; }
+    LocalPresets.upsertLocalPreset(name, {
+      physics: settingsState.physics,
+      match:   settingsState.matchInfo.settings,
+      mapId:   game.mapId,
+    });
+    presetNameInput.value = '';
+    presetStatus.textContent = 'Saved "' + name + '".';
+    renderPresets();
   });
 
   // ---- settings code --------------------------------------------------------
@@ -156,6 +221,7 @@ function initControlPanel() {
   var mapNameEl   = document.getElementById('controlMapName');
   var mapIdInput  = document.getElementById('controlMapId');
   var mapStatus   = document.getElementById('controlMapStatus');
+  var defaultMapRow = document.getElementById('controlDefaultMapRow');
 
   function renderMapName() {
     mapNameEl.textContent = 'Current: ' + (game.mapName || '(unknown)');
@@ -166,12 +232,37 @@ function initControlPanel() {
     mapStatus.textContent = '';
   });
 
-  document.getElementById('controlMapChangeBtn').addEventListener('click', function () {
-    var id = mapIdInput.value.trim();
+  function loadMap(id) {
     if (!id) return;
     actions.changeMap(id);
     mapStatus.textContent = 'Loading map ' + id + '…';
+  }
+
+  document.getElementById('controlMapChangeBtn').addEventListener('click', function () {
+    loadMap(mapIdInput.value.trim());
   });
+
+  // Curated CTF ids (local/defaultMaps.js) - one click straight to a known
+  // map instead of hunting for an id to paste into the field above.
+  DEFAULT_MAPS.forEach(function (id) {
+    var btn = document.createElement('button');
+    btn.className = 'menuBtn';
+    btn.textContent = String(id);
+    btn.addEventListener('click', function () { loadMap(id); });
+    defaultMapRow.appendChild(btn);
+  });
+
+  // The one map Eggball mode actually works on (see local/defaultMaps.js's
+  // EGGBALL_MAP_ID) - doesn't touch eggballEnabled itself, just the map;
+  // the "Eggball" preset (local/localPresets.js) is the one-click "both at
+  // once" path.
+  (function () {
+    var btn = document.createElement('button');
+    btn.className = 'menuBtn';
+    btn.textContent = String(EGGBALL_MAP_ID);
+    btn.addEventListener('click', function () { loadMap(EGGBALL_MAP_ID); });
+    document.getElementById('controlEggballMapRow').appendChild(btn);
+  })();
 
   // ---- save states ----------------------------------------------------------
   // In-memory only, lives on the host for this room's lifetime (see

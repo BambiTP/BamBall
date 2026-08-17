@@ -153,6 +153,7 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
         matchFrozen:   false,
         dead:          false,
         hasFlag:       false,
+        hasEgg:        false,
         tagpro:        false,
         rollingBomb:   false,
         jukeJuice:     false,
@@ -182,6 +183,11 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
       const player = gameState.removePlayer(id);
       if (!player) return;
       clearAllPlayerTimers(player);
+      // Unlike a flag (several of them, one per team, a capture-based reset
+      // already the norm), there's only ever one egg - a disconnect must
+      // drop it free instead of leaving it permanently stuck on a player
+      // object nothing can reach anymore.
+      this.dropEggball(player);
       if (player.body) physicsWorld.destroyBody(player.body);
     },
 
@@ -249,6 +255,7 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
       // (which only happens on respawn, well after the dot should be gone).
       player.kothLeader = false;
       this.returnFlag(player);
+      this.dropEggball(player);
 
       // Everyone the blast shoved is returned alongside the victim, the
       // same way the rollingBomb branch above does it. Callers emit this

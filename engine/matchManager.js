@@ -141,6 +141,7 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
       player.tagpro        = false;
       player.rollingBomb   = false;
       player.jukeJuice     = false;
+      player.hasEgg        = false;
       player.activeTeamTiles.clear();
       player.lastPortalX   = null;
       player.lastPortalY   = null;
@@ -165,6 +166,9 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
     resetPlayerEffects();
     resetElements();
     respawnAll();
+
+    if (config.eggballEnabled) gameHelpers.spawnEggball('red');
+    else gameHelpers.despawnEggball();
 
     emitter.emit('score', gameState.scores);
   }
@@ -352,6 +356,16 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
       const toggleKeys = PHYSICS_ENTRIES.filter(e => e.hooks?.includes('powerupToggle')).map(e => e.key);
       if (!toggleKeys.some(key => partial[key] !== undefined)) return;
       gameHelpers.enforcePowerupToggles();
+    },
+
+    // A leader flipping eggballEnabled takes effect immediately rather than
+    // waiting for the next match start/reset - on: spawn one to a random
+    // red player right away (same starting rule as resetField); off:
+    // despawn whatever's there, carried or in flight.
+    eggballToggle(partial) {
+      if (partial.eggballEnabled === undefined) return;
+      if (config.eggballEnabled) gameHelpers.spawnEggball('red');
+      else gameHelpers.despawnEggball();
     },
   };
 
@@ -570,13 +584,60 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
 
   emitter.on('capture', checkCaptureWinConditions);
 
+  // Eggball's own scoring path - not routed through checkCaptureWinConditions
+  // directly (tileHandlers.js's eggballScore has no reference to it, only to
+  // the emitter - same reasoning flagCapture's separate 'capture' emit
+  // already follows). Unlike a normal flag capture, a score here also
+  // freezes and respawns everyone after a countdown, and hands the egg to
+  // whichever team just got scored on for the next round - none of which a
+  // plain win-condition check does, so this can't just reuse that listener.
+  function scoreEggball(player) {
+    if (gameState.mode === 'editor') return;
+
+    const scoringTeam = player.team;
+    const losingTeam  = scoringTeam === 'red' ? 'blue' : 'red';
+    const bonus       = gameHelpers.eggballBounceBonusActive();
+
+    gameHelpers.despawnEggball();
+
+    gameState.scores[scoringTeam] += bonus ? 2 : 1;
+    emitter.emit('score', gameState.scores);
+    emitter.emit('update', player);
+
+    // May end the match outright (score limit / mercy / overtime sudden
+    // death) - checkCaptureWinConditions calls endMatch() itself in that
+    // case, which already freezes everyone and stops all momentum, so the
+    // countdown/respawn/next-carrier steps below must not also run.
+    checkCaptureWinConditions(player);
+    if (gameState.state === 'ended') return;
+
+    respawnAll();
+
+    // The freeze+countdown only applies mid-match - tick()'s own countdown
+    // handling always resolves BACK to 'live' once countdownDuration
+    // elapses (it has no notion of "which state this countdown started
+    // from"), so running it during pregame warm-up would incorrectly snap
+    // a not-yet-started room into 'live'. A pregame score still respawns
+    // everyone above, just without the freeze/countdown ceremony.
+    if (gameState.state === 'live') {
+      freezeAll(true);
+      gameState.state          = 'countdown';
+      gameState.phaseStartStep = gameState.stepCount;
+      emitter.emit('matchStateChanged');
+    }
+
+    gameHelpers.spawnEggball(losingTeam);
+  }
+
+  emitter.on('eggballScore', scoreEggball);
+
   // ---- save states ------------------------------------------------------
   // In-memory only, keyed by leader-chosen name, scoped to this room's
   // lifetime (this Map lives in matchManager's own closure - one per
   // GameInstance, same as everything else here). Deliberately NOT
   // persisted anywhere: this exists for rapid iterate-test-iterate physics
   // tuning within a single session, not as a durable save file - see
-  // engine/officialPresets.js and local/controlPanel.js's settings-code
+  // local/localPresets.js and local/controlPanel.js's settings-code
   // save/load for the "durable, portable" half of that spectrum.
   //
   // Restore leaves flag-carrying alone rather than trying to reconstruct

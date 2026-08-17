@@ -119,6 +119,17 @@ var setupTileLogic = function setupTileLogic(instance) {
       handlers.flagCapture(player);
     }
 
+    // Eggball: either goal counts, regardless of color - unlike the flag
+    // capture rule just above (return-to-your-own-base), reaching a goal AT
+    // ALL while carrying is the point. config.eggballEnabled gates this so
+    // a RedGoal/BlueGoal tile placed on a map keeps its ordinary flag-
+    // capture meaning (the two rules aren't mutually exclusive by tile name
+    // alone - eggballEnabled is what tells them apart).
+    if ((other.name === 'RedGoal' || other.name === 'BlueGoal')
+        && player.hasEgg && config.eggballEnabled && captureAllowed()) {
+      handlers.eggballScore(player);
+    }
+
     if (other.name === 'PupJJ' && powerupEnabled(other.id)) {
       handlers.pupJukeJuice(player, other);
     }

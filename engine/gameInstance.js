@@ -53,6 +53,21 @@ class GameInstance {
       self.pushSnapshotsFor(target);
     });
 
+    // physicsWorld.js's contact listener fires from inside Box2D's own
+    // Step() - mutating bodies there (catchEggball destroys the egg's) is
+    // forbidden and has previously crashed a whole room from inside
+    // SolveTOI, same issue tiles/tileHandlers.js's afterStep works around
+    // for player-vs-player pops. Deferring to a microtask lets the step
+    // finish resolving the collision first.
+    this.emitter.on('eggballContact', function (egg, other) {
+      Promise.resolve().then(function () {
+        if (other.isPlayer) self.gameHelpers.catchEggball(other);
+        else self.gameHelpers.recordEggballWallBounce();
+      }).catch(function (err) {
+        console.error('[gameInstance] deferred eggball contact failed:', err);
+      });
+    });
+
     this.timeStep    = 1 / 60;
     this.running     = false;
     this.accumulator = 0;
@@ -620,6 +635,7 @@ class GameInstance {
     this.physicsHelpers.counterGravity();
     this.physicsWorld.step(this.timeStep);
     this.physicsHelpers.syncPlayers();
+    this.gameHelpers.syncEggball();
     this.matchManager.tick();
   }
 }

@@ -116,6 +116,17 @@ var createTileHandlers = function createTileHandlers(gameState, gameHelpers, phy
       emitter.emit('capture', player);
     },
 
+    // ---- eggball -------------------------------------------------------------
+    // The score itself (points, win-condition check, post-score freeze/
+    // countdown/respawn, next carrier) all needs matchManager's own private
+    // state machine, which this file has no reference to - same reasoning
+    // flagCapture's separate 'capture' emit already follows, just its own
+    // event instead of piggybacking on that one (a normal flag capture
+    // doesn't freeze/respawn everyone the way an eggball score does).
+    eggballScore(player) {
+      emitter.emit('eggballScore', player);
+    },
+
     // ---- powerups ----------------------------------------------------------
 
     pupJukeJuice(player, tile) {

@@ -33,6 +33,19 @@ class PhysicsWorld {
       const dataB = contact.GetFixtureB().GetBody().GetUserData();
       if (!dataA || !dataB) return;
 
+      // The egg's body only has solid (non-sensor) fixtures - every sensor
+      // tile (goals included) reports no collision response at all, so
+      // this only ever fires for an actual wall/spike or a player. Which
+      // one it was is passed along; engine/gameInstance.js's listener
+      // (deferred - see its own comment) sorts that into a catch or a
+      // bounce-timestamp.
+      if (dataA.isEggball || dataB.isEggball) {
+        const egg   = dataA.isEggball ? dataA : dataB;
+        const other = dataA.isEggball ? dataB : dataA;
+        this.emitter.emit('eggballContact', egg, other);
+        return;
+      }
+
       if (dataA.isPlayer && !dataB.isPlayer) {
         this.emitter.emit('playerBegin', dataA, dataB);
       } else if (dataB.isPlayer && !dataA.isPlayer) {

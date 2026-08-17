@@ -156,6 +156,10 @@
   .subTabBtn.active { color: var(--text); background: var(--accent); }
   .settingRow { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; gap: 10px; border-bottom: 1px solid #444; }
   .settingRow input, .settingRow select { background: var(--panel); border: 1px solid #666; color: var(--text); padding: 3px 6px; width: 110px; text-align: right; }
+  .settingRowControls { display: flex; align-items: center; gap: 4px; }
+  .settingApplyBtn, .settingResetBtn { padding: 3px 8px; border: 1px solid #666; background: var(--panel); color: var(--text); cursor: pointer; font-size: 11px; }
+  .settingApplyBtn:hover { background: var(--go); }
+  .settingResetBtn:hover { background: var(--danger); }
   .physicsCategoryTitle { font-size: 12px; color: var(--text-dim); margin: 14px 0 4px; font-weight: bold; }
   .settingsSlot { margin-bottom: 14px; }
   .settingsSlot h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-dim); }
@@ -167,6 +171,10 @@
   /* ---- control tab: map / live settings / presets / save states ---- */
   .controlRow { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
   .controlRow input[type="text"] { flex: 1; min-width: 140px; padding: 6px 8px; background: var(--panel); border: 1px solid #666; color: var(--text); }
+  .presetPill { display: inline-flex; align-items: center; }
+  .presetPill .menuBtn { margin-right: 0; border-right: none; }
+  .presetDeleteBtn { padding: 7px 10px; margin-right: 8px; margin-top: 6px; }
+  .presetDeleteBtn:hover { background: var(--danger); }
   .saveStateRow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #666; margin-bottom: 4px; font-size: 13px; }
   .saveStateRow .saveStateName { flex: 1; }
   .saveStateRow .menuBtn { padding: 3px 10px; margin: 0; font-size: 11px; }
@@ -294,18 +302,24 @@
 
     <!-- Leader-only, same gate as #matchControls - see local/controlPanel.js
          and local/menu.js's renderMatchControls (also toggles this tab
-         button). Everything here applies instantly - a preset click, a
-         settings-code load, or a single field commit (change a value,
-         click/tab away) all go straight to matchManager, no separate
-         Apply step anywhere. -->
+         button). A preset click or a settings-code load replaces the whole
+         physics/match configuration at once and applies immediately; a
+         single field in the Physics/Match sections below does NOT apply
+         until its own Apply button is clicked (Reset puts that one field
+         back to its shipped default and applies that). -->
     <div id="controlPanel" class="menuPanel hidden">
       <div class="makerRow">
-        <h4>Presets</h4>
+        <h4>Presets <span class="controlHint">(saved in this browser)</span></h4>
         <div class="controlRow" id="controlPresetRow"></div>
+        <div class="controlRow">
+          <input type="text" id="controlPresetName" placeholder="name this setup">
+          <button class="menuBtn" id="controlSavePresetBtn">Save Current as Preset</button>
+        </div>
+        <span class="fileStatus" id="controlPresetStatus"></span>
       </div>
 
       <div class="makerRow">
-        <h4>Settings Code</h4>
+        <h4>Settings Code <span class="controlHint">(every setting, shareable)</span></h4>
         <div class="controlRow">
           <button class="menuBtn" id="controlGetCodeBtn">Get Code for Current Settings</button>
           <span class="fileStatus" id="controlCodeStatus"></span>
@@ -319,6 +333,10 @@
       <div class="makerRow">
         <h4>Map</h4>
         <div id="controlMapName" class="fileStatus"></div>
+        <div class="groupListLabel">CTF Maps</div>
+        <div class="controlRow" id="controlDefaultMapRow"></div>
+        <div class="groupListLabel">Eggball Map</div>
+        <div class="controlRow" id="controlEggballMapRow"></div>
         <div class="controlRow">
           <input type="text" id="controlMapId" placeholder="Fortunate Maps id, e.g. 98939">
           <button class="menuBtn" id="controlMapChangeBtn">Load</button>
@@ -327,12 +345,12 @@
       </div>
 
       <div class="makerRow">
-        <h4>Physics <span class="controlHint">(applies instantly - change a value, click away, it's live)</span></h4>
+        <h4>Physics <span class="controlHint">(click Apply on a row to change it, Reset for its default)</span></h4>
         <div id="controlPhysicsSubTabs"></div>
         <div id="controlPhysicsRows"></div>
       </div>
       <div class="makerRow">
-        <h4>Match <span class="controlHint">(applies instantly)</span></h4>
+        <h4>Match <span class="controlHint">(click Apply on a row to change it, Reset for its default)</span></h4>
         <div id="controlMatchRows"></div>
         <span class="fileStatus" id="controlSettingsStatus"></span>
       </div>
@@ -370,7 +388,6 @@
 <script src="engine/tiles/physicsData.js" defer></script>
 <script src="engine/settingsSchema.js" defer></script>
 <script src="engine/matchSettings.js" defer></script>
-<script src="engine/officialPresets.js" defer></script>
 <script src="engine/gameState.js" defer></script>
 <script src="engine/physicsWorld.js" defer></script>
 <script src="engine/snapshotFactory.js" defer></script>
@@ -379,6 +396,7 @@
 <script src="engine/teamTiles.js" defer></script>
 <script src="engine/gateLogic.js" defer></script>
 <script src="engine/powerupSpawner.js" defer></script>
+<script src="engine/eggballLogic.js" defer></script>
 <script src="engine/gameHelpers.js" defer></script>
 <script src="engine/physicsHelpers.js" defer></script>
 <script src="engine/mapWiring.js" defer></script>
@@ -412,6 +430,7 @@
 <script src="client/render/spriteAtlas.js" defer></script>
 <script src="client/render/wallAutotile.js" defer></script>
 <script src="client/render/playerRenderer.js" defer></script>
+<script src="client/render/eggballRenderer.js" defer></script>
 <script src="client/render/overlayRenderer.js" defer></script>
 <script src="client/render/camera.js" defer></script>
 
@@ -439,6 +458,8 @@
 <script src="local/fortunateMapsImport.js" defer></script>
 <script src="local/joinUI.js" defer></script>
 <script src="local/menu.js" defer></script>
+<script src="local/defaultMaps.js" defer></script>
+<script src="local/localPresets.js" defer></script>
 <script src="local/controlPanel.js" defer></script>
 <script src="local/tagproLogin.js" defer></script>
 <script src="local/main.js" defer></script>

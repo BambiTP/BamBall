@@ -97,6 +97,33 @@ const gameConfig = {
   // ground on a contested pad win it without having to back off and re-touch.
   kothPowerup: false,
 
+  // Eggball - a single catchable/throwable projectile with its own scoring
+  // rules; off by default. radius is the egg's own size (0.25 tiles = a
+  // 20px-diameter circle at this engine's 40px/tile scale). throwStrength
+  // is its launch speed when thrown; speed is a hard velocity cap enforced
+  // every tick after that (walls can otherwise add energy back on a bounce,
+  // this keeps it from running away). bounceBonusWindow is how long after a
+  // wall bounce a score is still worth the 2x bonus (see engine/
+  // matchManager.js's scoreEggball). density/friction/restitution/damping
+  // are its Box2D fixture/body properties - same knobs a leader already
+  // has for the player ball itself, just this object's own copies (see
+  // engine/eggballLogic.js's makeEggballBody) so its bounciness/weight/
+  // spin can be tuned independently. No separate catch-radius setting -
+  // catching is real collision with this same body/radius, not a distance
+  // check - or a "respawn" delay (after a score the match's own
+  // countdownDuration, Match category, is reused for the freeze before
+  // everyone - and the egg - respawns).
+  eggballEnabled:           false,
+  eggballRadius:            0.25,
+  eggballThrowStrength:     12,
+  eggballSpeed:             15,
+  eggballBounceBonusWindow: 3000,
+  eggballDensity:           1,
+  eggballFriction:          0,
+  eggballRestitution:       1,
+  eggballLinearDamping:     0,
+  eggballAngularDamping:    0,
+
   // Camera. cameraZoom is the zoom level a player renders at (lower =
   // further out = more map), tunable room-wide or per player; allowWheelZoom
   // additionally lets players wheel away from it while playing, in either

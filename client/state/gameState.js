@@ -66,6 +66,12 @@ var game = {
   // Room-wide KOTH toggle, kept in sync from settingsState so a stale KOTH
   // dot can't survive the leader turning the mode off.
   kothPowerup: false,
+
+  // Eggball's one projectile (engine/eggballLogic.js's eggballChanged
+  // packets, seeded on 'joined'). carrierId set means render it at that
+  // player's own position instead of x/y here - see client/render/
+  // eggballRenderer.js.
+  eggball: { carrierId: null, x: 0, y: 0, vx: 0, vy: 0 },
 };
 
 function teamFromCode(t) {

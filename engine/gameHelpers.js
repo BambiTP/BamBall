@@ -5,6 +5,7 @@ var createFlagLogic       = (typeof require === 'function') ? require('./flagLog
 var createPowerupSpawner  = (typeof require === 'function') ? require('./powerupSpawner') : globalThis.createPowerupSpawner;
 var createTeamTiles       = (typeof require === 'function') ? require('./teamTiles') : globalThis.createTeamTiles;
 var createGateLogic       = (typeof require === 'function') ? require('./gateLogic') : globalThis.createGateLogic;
+var createEggballLogic    = (typeof require === 'function') ? require('./eggballLogic') : globalThis.createEggballLogic;
 
 // The single gameHelpers object every other module calls into is composed
 // here from domain modules (CODEBASE_AUDIT.md: playerLifecycle.js,
@@ -70,6 +71,7 @@ var createGameHelpers = function(gameState, physicsHelpers, physicsWorld, config
     createPowerupSpawner(gameState, physicsHelpers, config, emitter),
     createTeamTiles(),
     createGateLogic(gameState, physicsHelpers, config, emitter),
+    createEggballLogic(gameState, physicsWorld, config, emitter),
   );
 };
 

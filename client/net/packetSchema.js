@@ -35,6 +35,15 @@ var packetSchema = {
     return { type: 'detonateBomb' };
   },
 
+  // dirX/dirY: world-space vector from the carrier to wherever they clicked
+  // (client/input/fireInput.js) - need not be normalized, the server only
+  // cares about its direction (engine/eggballLogic.js's throwEggball).
+  // Client-supplied like every movement input this game already trusts
+  // (left/right/up/down), not derived server-side from velocity.
+  throwEgg(dirX, dirY) {
+    return { type: 'throwEgg', dirX: dirX, dirY: dirY };
+  },
+
   setEditMode(on) {
     return { type: 'set_edit_mode', on: !!on };
   },
