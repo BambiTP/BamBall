@@ -22,280 +22,153 @@
   window.GAME_BASE_PATH = location.pathname.replace(/[^/]*$/, '');
 </script>
 <style>
-  /* ==========================================================================
-     DESIGN SYSTEM - "console", not "app"
-     ---------------------------------------------------------------------
-     Reasoning: this is a physics sandbox where the primary users (leaders
-     tuning gravity/bomb/jump constants) are reading and setting raw numbers
-     under time pressure, over and over, mid-match. The old palette (generic
-     #444 gray buttons, #5588ff "default dark mode" blue, 4-6px soft
-     rounding) reads as a consumer web-app chrome that could belong to
-     anything - it gives the leader no visual cue that they're operating
-     precision controls. Every token below exists to make the UI feel like
-     an instrument panel instead: numbers get a monospace face so columns
-     of values actually align and read as data, corners sharpen (2px, just
-     enough to not be literally square) because sharp edges read as
-     "engineered" where soft ones read as "friendly," and the accent moves
-     off generic blue onto a cyan that's rare enough in software chrome to
-     read as "this app's own color" rather than "whatever the CSS framework
-     shipped with." Team red/blue and the loading-state amber are the only
-     colors kept from the old palette on purpose - they're game state, not
-     brand decoration, and changing them would cost recognizability for
-     nothing. One token block, referenced everywhere below, so retuning the
-     whole look later is an edit to this block, not a hunt through 40
-     selectors.
-     ========================================================================== */
+  /* Plain styling, kept deliberately simple - basic colors, default-ish
+     borders, one accent color, no letter-spacing/uppercase/monospace
+     theming. Positioning/layout rules (position, flex, z-index) stay as-is
+     since the app needs them to actually work; only the decoration is
+     plain. */
   :root {
-    --bg:         #0a0f11;   /* base: near-black with a cold cyan-black tint, not flat #111 gray */
-    --panel:      #10171a;   /* one step up from bg - menu/card fill */
-    --panel-raised: #161f23; /* hover/active fill, two steps up */
-    --line:       #1f2e31;   /* structural borders between panels/rows */
-    --line-bright: #2c4145;
-    --text:       #d3e0e2;   /* primary text - cool white, never pure #fff (too stark against --bg) */
-    --text-dim:   #6f8489;   /* labels, secondary text, placeholders */
-    --accent:     #33d6ce;   /* primary accent - cyan; reads as "live readout," not "generic app blue" */
-    --accent-dim: #1a4b48;
-    --danger:     #e8536b;
-    --danger-dim: #4a1c24;
-    --go:         #35c46a;   /* join/start actions only */
-    --red-team:   #ff6666;
-    --blue-team:  #6699ff;
-    --radius:     2px;       /* sharp over soft - "engineered," not "friendly" */
-    --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Consolas, monospace;
-    --sans: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --bg:     #222;
+    --panel:  #333;
+    --text:   #fff;
+    --text-dim: #aaa;
+    --accent: #3366cc;
+    --danger: #cc3333;
+    --go:     #339933;
+    --red-team: #ff0000;
+    --blue-team: #0066ff;
+    --radius: 4px;
   }
 
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); overflow: hidden; font-family: var(--sans); }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); overflow: hidden; font-family: Arial, sans-serif; }
   #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-  /* HUD numbers (score/timer/ping) are live telemetry, not prose - monospace
-     so the digits don't reflow the layout as they change and so they read
-     as instrument-panel readouts rather than a website header. */
-  #hud { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); color: var(--text); text-align: center; text-shadow: 0 1px 2px #000; pointer-events: none; font-family: var(--mono); }
-  #hudScore { font-size: 20px; font-weight: 600; letter-spacing: 0.5px; }
+  #hud { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); color: var(--text); text-align: center; text-shadow: 1px 1px 2px #000; pointer-events: none; }
+  #hudScore { font-size: 20px; font-weight: bold; }
   #hudTimer { font-size: 13px; color: var(--text-dim); }
-  #hudPing { font-size: 10px; color: var(--text-dim); opacity: 0.7; margin-top: 2px; }
-  #hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); color: var(--text-dim); font-size: 12px; font-family: var(--sans); }
+  #hudPing { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+  #hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); color: var(--text-dim); font-size: 12px; }
   .hidden { display: none !important; }
 
-  /* ---- persistent pause/resume toggle: leader-only, lives outside the Esc
-     menu entirely (top-right, clear of the centered score/timer HUD) so
-     it's a single click with no menu-diving - see local/menu.js's
-     renderPauseToggle(). Text label, not an icon glyph: an icon here would
-     need its own explanation the first time someone sees it, a word never
-     does, and this button is rare enough (one leader, occasional use) that
-     the extra few characters of width cost nothing. */
-  #hudPauseToggle { position: absolute; top: 8px; right: 16px; pointer-events: auto; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line-bright); border-radius: var(--radius); color: var(--text); cursor: pointer; }
-  #hudPauseToggle:hover { border-color: var(--accent); color: var(--accent); }
-  #hudPauseToggle.isPaused { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  #hudPauseToggle { position: absolute; top: 8px; right: 16px; pointer-events: auto; font-size: 12px; padding: 6px 12px; background: var(--panel); border: 1px solid #666; border-radius: var(--radius); color: var(--text); cursor: pointer; }
+  #hudPauseToggle.isPaused { background: var(--accent); }
 
-  /* ---- chat: a small overlay, not inside the Esc menu, so it stays usable
-     mid-match. #menu sits at z-index 100 with an opaque-ish background
-     covering the whole screen, so this only needs to sit above the game
-     viewport, not worry about the menu separately. */
   #chatBox { position: absolute; bottom: 8px; left: 8px; width: 280px; z-index: 40; }
-  #chatLog { max-height: 130px; overflow-y: auto; font-size: 12px; color: var(--text); display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6); }
+  #chatLog { max-height: 130px; overflow-y: auto; font-size: 12px; color: var(--text); display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; text-shadow: 1px 1px 2px #000; }
   .chatRow { word-break: break-word; }
-  .chatRow .chatName { color: var(--accent); font-weight: 600; margin-right: 4px; }
-  /* Stays invisible (no fill/border) until focused, so it doesn't look like
-     a UI bar sitting over the game when the player isn't typing. */
-  #chatInput { width: 100%; box-sizing: border-box; padding: 5px 6px; background: transparent; color: var(--text); border: 1px solid transparent; border-radius: var(--radius); font-size: 12px; transition: background 0.15s, border-color 0.15s; }
-  #chatInput::placeholder { color: transparent; }
-  #chatInput:focus { background: rgba(0,0,0,0.4); border-color: var(--line-bright); }
-  #chatInput:focus::placeholder { color: var(--text-dim); }
+  .chatRow .chatName { color: var(--accent); font-weight: bold; margin-right: 4px; }
+  #chatInput { width: 100%; box-sizing: border-box; padding: 5px 6px; background: #fff; color: #000; border: 1px solid #999; border-radius: var(--radius); font-size: 12px; }
 
-  /* ---- join controls: live inside the Esc menu's Teams tab, not floating
-     over the game (see #joinControls under "teams tab" below for layout -
-     these are just the button colors, shared regardless of where they sit).
-     Team buttons keep flat fills (this is the one place a bold solid color
-     is correct - it's the same color as the ball you're about to control),
-     everything else in this redesign moves to the outlined console style. */
   .joinRow { display: flex; gap: 16px; }
-  #joinControls button { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; padding: 10px 24px; border: none; border-radius: var(--radius); cursor: pointer; color: #fff; }
-  #joinControls button:disabled { opacity: 0.35; cursor: default; }
-  #joinRedBtn { background: #b33; }
-  #joinRedBtn.active { outline: 2px solid var(--accent); outline-offset: 2px; }
-  #joinBlueBtn { background: #34c; }
-  #joinBlueBtn.active { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #joinControls button { font-size: 15px; font-weight: bold; padding: 10px 24px; border: 1px solid #666; border-radius: var(--radius); cursor: pointer; color: #fff; }
+  #joinControls button:disabled { opacity: 0.4; cursor: default; }
+  #joinRedBtn { background: #cc3333; }
+  #joinRedBtn.active { outline: 3px solid yellow; }
+  #joinBlueBtn { background: #3366cc; }
+  #joinBlueBtn.active { outline: 3px solid yellow; }
   #joinGameBtn { background: var(--go); }
-  #leaveGameBtn { background: transparent; border: 1px solid var(--line-bright) !important; color: var(--text-dim); }
-  #leaveGroupBtn { background: transparent; border: 1px solid var(--line-bright) !important; color: var(--text-dim); font-size: 13px; padding: 6px 14px; }
+  #leaveGameBtn { background: var(--panel); color: var(--text); }
+  #leaveGroupBtn { background: var(--panel); color: var(--text); font-size: 13px; padding: 6px 14px; }
 
-  /* ---- loading overlay: plain HTML/CSS, no JS needed to show it - it's
-     visible the instant the browser parses this far, before any of the
-     72 deferred <script> tags below have even started fetching. Hidden by
-     main.js once boot() actually finishes (map, physics, textures ready).
-     Starts hidden in markup - #modeSelect shows first, this only takes
-     over once a mode's actually been picked. */
-  #loadingOverlay { position: absolute; inset: 0; background: var(--bg); z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--text-dim); font-size: 13px; font-family: var(--mono); letter-spacing: 0.5px; text-transform: uppercase; }
-  #loadingSpinner { width: 32px; height: 32px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: loadingSpin 0.8s linear infinite; }
+  #loadingOverlay { position: absolute; inset: 0; background: var(--bg); z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--text); font-size: 14px; }
+  #loadingSpinner { width: 32px; height: 32px; border: 4px solid #666; border-top-color: var(--accent); border-radius: 50%; animation: loadingSpin 0.8s linear infinite; }
   @keyframes loadingSpin { to { transform: rotate(360deg); } }
 
-  /* ---- mode select: Play Solo / Create Group / browse+join the Open
-     Groups list - shown first, before any engine/network boot work
-     starts. Outlined and compact, same instrument-panel language as
-     .menuBtn elsewhere (see that rule's comment) - a filled 220px pill
-     was the one place left that still read as generic "app" chrome
-     instead of BamBall's own console look. No manual "type a code+
-     password" join anymore - see #joinGroupCode's comment below. */
   #modeSelect { position: absolute; inset: 0; background: var(--bg); z-index: 400; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text); }
-  #modeSelect h1 { font-size: 13px; margin: 0 0 6px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px; }
-  /* Class-scoped, not "#modeSelect button" - the join-by-link modal below
-     nests its own differently-styled buttons (.identityToggle, #linkJoinBtn)
-     inside #modeSelect too, and an id+element descendant selector would
-     out-specificity their own ids and clobber them. */
-  .modeSelectBtn { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; padding: 8px 16px; border: 1px solid var(--line-bright); border-radius: var(--radius); cursor: pointer; background: transparent; color: var(--text); width: 200px; transition: border-color 0.12s, color 0.12s; }
-  .modeSelectBtn:hover { border-color: var(--accent); color: var(--accent); }
-  .modeSelectBtn:disabled { opacity: 0.35; cursor: default; }
-  #createGroupPassword { font-size: 13px; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 200px; box-sizing: border-box; text-align: center; }
-  #createGroupPassword:focus { outline: none; border-color: var(--accent); }
+  #modeSelect h1 { font-size: 20px; margin: 0 0 10px; color: var(--text); }
+  .modeSelectBtn { font-size: 14px; font-weight: bold; padding: 10px 20px; border: 1px solid #666; border-radius: var(--radius); cursor: pointer; background: var(--panel); color: var(--text); width: 200px; }
+  .modeSelectBtn:hover { background: var(--accent); }
+  .modeSelectBtn:disabled { opacity: 0.4; cursor: default; }
+  #createGroupPassword { font-size: 14px; padding: 8px; border-radius: var(--radius); border: 1px solid #999; width: 200px; box-sizing: border-box; text-align: center; }
   #modeSelectStatus { font-size: 12px; color: var(--danger); min-height: 16px; }
 
-  /* ---- duplicate-tab prompt: same browser already has this group open
-     in another tab - see local/main.js's 'duplicateDevice:ask' handler. ---- */
   #duplicateTabModal { position: absolute; inset: 0; background: rgba(0,0,0,0.75); z-index: 550; display: flex; align-items: center; justify-content: center; }
-  #duplicateTabCard { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--line-bright); border-radius: var(--radius); padding: 24px; box-sizing: border-box; text-align: center; }
-  #duplicateTabText { color: var(--text); font-size: 14px; line-height: 1.5; margin-bottom: 18px; }
-  #duplicateTabCard button { width: 100%; font-size: 14px; font-weight: 600; padding: 11px; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; color: #fff; margin-bottom: 8px; }
-  #duplicateGuestBtn { background: var(--accent-dim); border-color: var(--accent) !important; color: var(--accent); }
-  #duplicateReplaceBtn { background: var(--danger-dim); border-color: var(--danger) !important; color: var(--danger); margin-bottom: 0; }
+  #duplicateTabCard { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid #666; border-radius: var(--radius); padding: 24px; box-sizing: border-box; text-align: center; }
+  #duplicateTabText { color: var(--text); font-size: 14px; margin-bottom: 18px; }
+  #duplicateTabCard button { width: 100%; font-size: 14px; padding: 11px; border: 1px solid #666; border-radius: var(--radius); cursor: pointer; color: #fff; margin-bottom: 8px; }
+  #duplicateGuestBtn { background: var(--accent); }
+  #duplicateReplaceBtn { background: var(--danger); margin-bottom: 0; }
 
-  /* ---- join-by-link modal: someone opened a /group/<code> link. Same
-     card-over-backdrop pattern as #duplicateTabModal, laid over the
-     ordinary mode-select screen (already loading underneath, never
-     navigated away from) instead of dumping a stranger onto the full
-     lobby browser they never asked for - just pick a name and join.
-     "Browse groups instead" dismisses it back to the normal screen,
-     already there underneath. Nested inside #modeSelect so main.js's
-     existing beginBoot() hide covers this for free once a join
-     succeeds. ---- */
+  /* Join-by-code card: used both for a shared /group/<code> link and for
+     clicking a locked room in the Open Groups list below - a plain form
+     right on this page instead of the browser's own prompt() popup. */
   #linkJoinModal { position: absolute; inset: 0; background: rgba(0,0,0,0.75); z-index: 450; display: flex; align-items: center; justify-content: center; }
-  #linkJoinCard { width: 100%; max-width: 300px; background: var(--panel); border: 1px solid var(--line-bright); border-radius: var(--radius); padding: 20px; box-sizing: border-box; }
-  #linkJoinCard h2 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; }
-  #linkJoinCode { margin: 0 0 14px; font-size: 20px; font-family: var(--mono); letter-spacing: 3px; color: var(--accent); }
+  #linkJoinCard { width: 100%; max-width: 300px; background: var(--panel); border: 1px solid #666; border-radius: var(--radius); padding: 20px; box-sizing: border-box; }
+  #linkJoinCard h2 { margin: 0 0 8px; font-size: 16px; color: var(--text); }
+  #linkJoinCode { margin: 0 0 14px; font-size: 20px; letter-spacing: 2px; color: var(--accent); }
   #linkJoinModal .identityRow { margin-bottom: 10px; }
-  #linkJoinPassword { font-size: 13px; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; margin-bottom: 10px; }
-  #linkJoinPassword:focus { outline: none; border-color: var(--accent); }
-  #linkJoinBtn { width: 100%; font-size: 13px; font-weight: 600; padding: 9px; border: 1px solid var(--accent); border-radius: var(--radius); cursor: pointer; background: var(--accent-dim); color: var(--accent); margin-bottom: 8px; transition: opacity 0.12s; }
-  #linkJoinBtn:disabled { opacity: 0.35; cursor: default; }
-  #linkJoinDismissBtn { width: 100%; font-size: 12px; padding: 6px; border: none; background: none; cursor: pointer; color: var(--text-dim); }
-  #linkJoinDismissBtn:hover { color: var(--text); }
+  #linkJoinPassword { font-size: 14px; padding: 8px; border-radius: var(--radius); border: 1px solid #999; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+  #linkJoinBtn { width: 100%; font-size: 14px; font-weight: bold; padding: 9px; border: 1px solid #666; border-radius: var(--radius); cursor: pointer; background: var(--go); color: #fff; margin-bottom: 8px; }
+  #linkJoinBtn:disabled { opacity: 0.4; cursor: default; }
+  #linkJoinDismissBtn { width: 100%; font-size: 12px; padding: 6px; border: none; background: none; cursor: pointer; color: var(--text-dim); text-decoration: underline; }
   #linkJoinStatus { font-size: 12px; color: var(--danger); min-height: 14px; margin-top: 2px; text-align: center; }
 
-  /* ---- identity: display name + optional TagPro login. Two instances
-     share this markup - the mode-select row (local/tagproLogin.js) and
-     the join-by-link modal above - both read/write the same localStorage
-     preference, so whichever one you touch is what the other shows next.
-     The verified name lives in a small label ABOVE the box, not baked
-     into the box itself - the box always holds exactly what you're about
-     to play as, editable at all times. Green text is just a live "this
-     matches your verified name" signal (local/tagproLogin.js's
-     updateNameColor), not a lock; editing the box away from it is how
-     you deliberately drop back to an unverified custom name without
-     logging out. Login itself is a small switch, not a button - it's a
-     rare, secondary action next to "pick a name and play," and doesn't
-     deserve the same visual weight. ---- */
+  /* identity: display name + optional TagPro login. Two instances share
+     this markup - the mode-select row and the join-by-code card above -
+     both read/write the same localStorage preference. */
   .identityRow { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 4px; }
   .identityNameCol { display: flex; flex-direction: column; gap: 2px; }
-  .identityReserved { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; height: 12px; line-height: 12px; }
-  .identityInput { font-size: 14px; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 150px; box-sizing: border-box; }
-  .identityInput:focus { outline: none; border-color: var(--accent); }
-  /* No label text on the switch itself - the name box right next to it,
-     plus the title tooltip, already say what it does. "On" pulls the
-     knob to the accent side and tints the track; "off" is a plain
-     outline. */
-  .identityToggle { position: relative; width: 34px; height: 18px; flex-shrink: 0; border-radius: 999px; border: 1px solid var(--line-bright); background: var(--panel); padding: 0; cursor: pointer; }
-  .identityToggle::after { content: ''; position: absolute; top: 1px; left: 1px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-dim); transition: transform 0.15s, background 0.15s; }
-  .identityToggle.on { border-color: var(--accent); background: var(--accent-dim); }
-  .identityToggle.on::after { transform: translateX(16px); background: var(--accent); }
+  .identityReserved { font-size: 10px; color: var(--text-dim); height: 12px; line-height: 12px; }
+  .identityInput { font-size: 14px; padding: 8px; border-radius: var(--radius); border: 1px solid #999; width: 150px; box-sizing: border-box; }
+  .identityToggle { padding: 8px 10px; border: 1px solid #666; border-radius: var(--radius); background: var(--panel); color: var(--text); cursor: pointer; font-size: 12px; }
+  .identityToggle.on { background: var(--accent); }
 
-  /* ---- homepage open-groups list: a real table, not stacked cards -
-     styled after HaxBall's own room browser (dense rows, muted uppercase
-     column headers, a lock glyph column of its own, hover-highlight to
-     click-to-join). Always visible, not behind a button - see local/
-     main.js's refreshGroupList(). ---- */
-  .groupListLabel { font-size: 11px; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin-top: 4px; }
-  /* This IS the join flow now, not a fallback next to a code box (removed -
-     see #joinGroupCode's comment) - sized to actually show most of a
-     room's worth of open groups at once instead of a cramped 220px
-     peephole. */
-  #groupList { width: 600px; max-height: 420px; overflow-y: auto; margin-top: 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+  /* homepage open-groups list - a plain table, click a row to join. */
+  .groupListLabel { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  #groupList { width: 600px; max-height: 420px; overflow-y: auto; margin-top: 4px; border: 1px solid #666; border-radius: var(--radius); background: var(--panel); }
   #groupTable { width: 100%; border-collapse: collapse; font-size: 14px; }
-  #groupTable thead th { position: sticky; top: 0; background: var(--panel-raised); color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  #groupTable thead th { position: sticky; top: 0; background: var(--panel); color: var(--text-dim); font-size: 12px; font-weight: bold; text-align: left; padding: 8px 12px; border-bottom: 1px solid #666; }
   #groupTable th.groupLockCol, #groupTable td.groupLockCol { width: 24px; text-align: center; padding-left: 10px; padding-right: 0; }
-  #groupTable th.groupPlayersCol, #groupTable td.groupPlayersCol { text-align: right; padding-right: 14px; font-family: var(--mono); }
-  #groupTable tbody tr { cursor: pointer; border-bottom: 1px solid var(--line); }
-  #groupTable tbody tr:hover { background: var(--accent-dim); }
+  #groupTable th.groupPlayersCol, #groupTable td.groupPlayersCol { text-align: right; padding-right: 14px; }
+  #groupTable tbody tr { cursor: pointer; border-bottom: 1px solid #444; }
+  #groupTable tbody tr:hover { background: var(--accent); }
   #groupTable td { padding: 9px 12px; color: var(--text); }
-  #groupTable td.groupCodeCol { font-family: var(--mono); letter-spacing: 1px; color: var(--accent); }
+  #groupTable td.groupCodeCol { color: var(--accent); }
   #groupTable td.groupHostCol { color: var(--text-dim); }
   .groupListEmptyRow td { font-size: 12px; color: var(--text-dim); text-align: center; padding: 14px; cursor: default; }
   .groupListEmptyRow:hover { background: none !important; }
 
   /* ---- ESC menu ---- */
-  #menu { position: absolute; inset: 0; background: rgba(8,11,12,0.94); color: var(--text); display: flex; flex-direction: column; z-index: 100; }
-  #menuTabs { display: flex; gap: 2px; padding: 12px 16px 0; border-bottom: 1px solid var(--line); }
-  /* Tabs read as labeled console sections: uppercase + letter-spacing +
-     monospace reinforces "you are selecting an instrument mode," and the
-     active tab gets a full accent underline instead of a soft color swap
-     so it's legible at a glance while scanning quickly mid-match. */
-  .menuTabBtn { background: none; border: none; color: var(--text-dim); padding: 10px 16px; font-size: 12px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; cursor: pointer; border-bottom: 2px solid transparent; }
-  .menuTabBtn:hover { color: var(--text); }
-  .menuTabBtn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  #menu { position: absolute; inset: 0; background: rgba(20,20,20,0.95); color: var(--text); display: flex; flex-direction: column; z-index: 100; }
+  #menuTabs { display: flex; gap: 2px; padding: 12px 16px 0; border-bottom: 1px solid #666; }
+  .menuTabBtn { background: var(--panel); border: 1px solid #666; color: var(--text-dim); padding: 10px 16px; font-size: 13px; cursor: pointer; }
+  .menuTabBtn.active { color: var(--text); background: var(--accent); }
   #menuPanels { flex: 1; overflow: auto; padding: 20px; max-width: 900px; margin: 0 auto; width: 100%; box-sizing: border-box; }
   .menuPanel.hidden { display: none; }
-  #menuCloseHint { position: absolute; top: 10px; right: 16px; color: var(--text-dim); font-size: 11px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; }
+  #menuCloseHint { position: absolute; top: 10px; right: 16px; color: var(--text-dim); font-size: 12px; }
 
   /* ---- teams tab ---- */
-  #joinControls { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+  #joinControls { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #666; }
   #teamsGrid { display: flex; gap: 16px; }
-  /* A thin top accent bar per team-color card, background stays neutral -
-     "one colored stripe" reads as a labeled instrument module; a fully
-     tinted card competes with the red/blue ball colors on screen instead
-     of just referencing them. */
-  .teamBox { flex: 1; background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--line-bright); border-radius: var(--radius); padding: 12px; min-height: 200px; }
-  .teamBox h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); }
-  .teamBox[data-team="red"] { border-top-color: var(--red-team); }
+  .teamBox { flex: 1; background: var(--panel); border: 1px solid #666; padding: 12px; min-height: 200px; }
+  .teamBox h3 { margin: 0 0 10px; font-size: 14px; }
   .teamBox[data-team="red"] h3 { color: var(--red-team); }
-  .teamBox[data-team="blue"] { border-top-color: var(--blue-team); }
   .teamBox[data-team="blue"] h3 { color: var(--blue-team); }
   .teamBox[data-team="spectator"] h3 { color: var(--text-dim); }
-  .playerRow { padding: 6px 8px; border-radius: var(--radius); background: var(--panel-raised); border: 1px solid var(--line); margin-bottom: 4px; font-size: 13px; }
+  .playerRow { padding: 6px 8px; background: #444; border: 1px solid #666; margin-bottom: 4px; font-size: 13px; }
   .groupCodeLine { margin-top: 16px; font-size: 12px; color: var(--text-dim); }
-  .groupCodeLine code { background: var(--panel-raised); border: 1px solid var(--line); padding: 2px 6px; border-radius: var(--radius); color: var(--accent); font-family: var(--mono); }
+  .groupCodeLine code { background: #444; border: 1px solid #666; padding: 2px 6px; color: var(--accent); }
 
   /* ---- settings maker + record/files tabs ---- */
   .makerRow { margin-bottom: 14px; }
-  .makerRow label { display: block; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-  .makerRow select, .makerRow input[type="text"] { width: 100%; padding: 6px; background: var(--panel); border: 1px solid var(--line-bright); color: var(--text); border-radius: var(--radius); box-sizing: border-box; }
-  .subTabBtn { background: var(--panel); border: 1px solid var(--line); color: var(--text-dim); padding: 4px 10px; margin: 0 4px 8px 0; border-radius: var(--radius); cursor: pointer; font-size: 11px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.5px; }
-  .subTabBtn.active { color: var(--accent); border-color: var(--accent); }
-  /* Setting rows are the densest, most-scanned surface in the whole app
-     (a leader hunting for one constant among dozens) - value column is
-     monospace and right-aligned so a column of numbers actually reads as
-     a column, the way the raw lx/ly/rx/ry telemetry read while tuning
-     physics this session. */
-  .settingRow { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; gap: 10px; border-bottom: 1px solid var(--line); }
-  .settingRow input, .settingRow select { background: var(--panel); border: 1px solid var(--line-bright); color: var(--accent); font-family: var(--mono); border-radius: var(--radius); padding: 3px 6px; width: 110px; text-align: right; }
-  .settingRow input:focus, .settingRow select:focus { outline: none; border-color: var(--accent); }
-  .physicsCategoryTitle { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); font-family: var(--mono); margin: 14px 0 4px; }
+  .makerRow label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .makerRow select, .makerRow input[type="text"] { width: 100%; padding: 6px; background: var(--panel); border: 1px solid #666; color: var(--text); box-sizing: border-box; }
+  .subTabBtn { background: var(--panel); border: 1px solid #666; color: var(--text-dim); padding: 4px 10px; margin: 0 4px 8px 0; cursor: pointer; font-size: 12px; }
+  .subTabBtn.active { color: var(--text); background: var(--accent); }
+  .settingRow { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; gap: 10px; border-bottom: 1px solid #444; }
+  .settingRow input, .settingRow select { background: var(--panel); border: 1px solid #666; color: var(--text); padding: 3px 6px; width: 110px; text-align: right; }
+  .physicsCategoryTitle { font-size: 12px; color: var(--text-dim); margin: 14px 0 4px; font-weight: bold; }
   .settingsSlot { margin-bottom: 14px; }
-  .settingsSlot h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
-  .fileStatus { font-size: 11px; color: var(--text-dim); min-height: 14px; }
-  .controlHint { font-size: 11px; font-weight: normal; color: var(--text-dim); text-transform: none; letter-spacing: normal; }
-  /* Outlined, not filled - a flat gray fill is the single most "generic
-     web app" tell there is. An outline that lights up to the accent color
-     on hover reads as a labeled control being armed, and costs nothing in
-     legibility since every panel background is already dark and neutral. */
-  .menuBtn { padding: 7px 14px; border: 1px solid var(--line-bright); border-radius: var(--radius); cursor: pointer; background: transparent; color: var(--text); font-size: 12px; font-weight: 600; letter-spacing: 0.3px; margin-right: 8px; margin-top: 6px; transition: border-color 0.12s, color 0.12s; }
-  .menuBtn:hover { border-color: var(--accent); color: var(--accent); }
+  .settingsSlot h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-dim); }
+  .fileStatus { font-size: 12px; color: var(--text-dim); min-height: 14px; }
+  .controlHint { font-size: 11px; font-weight: normal; color: var(--text-dim); }
+  .menuBtn { padding: 7px 14px; border: 1px solid #666; cursor: pointer; background: var(--panel); color: var(--text); font-size: 12px; margin-right: 8px; margin-top: 6px; }
+  .menuBtn:hover { background: var(--accent); }
 
   /* ---- control tab: map / live settings / presets / save states ---- */
   .controlRow { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
-  .controlRow input[type="text"] { flex: 1; min-width: 140px; padding: 6px 8px; background: var(--panel); border: 1px solid var(--line-bright); color: var(--text); border-radius: var(--radius); font-family: var(--mono); }
-  .controlRow input[type="text"]:focus { outline: none; border-color: var(--accent); }
-  .controlHint { font-weight: normal; text-transform: none; letter-spacing: 0; color: var(--text-dim); font-size: 11px; }
-  .saveStateRow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 4px; font-size: 13px; }
-  .saveStateRow .saveStateName { flex: 1; font-family: var(--mono); }
+  .controlRow input[type="text"] { flex: 1; min-width: 140px; padding: 6px 8px; background: var(--panel); border: 1px solid #666; color: var(--text); }
+  .saveStateRow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #666; margin-bottom: 4px; font-size: 13px; }
+  .saveStateRow .saveStateName { flex: 1; }
   .saveStateRow .menuBtn { padding: 3px 10px; margin: 0; font-size: 11px; }
 </style>
 <link rel="stylesheet" href="shared/texturePackPicker.css">
@@ -308,7 +181,7 @@
       <div class="identityReserved" id="displayNameReserved"></div>
       <input id="displayNameInput" class="identityInput" placeholder="Someball" maxlength="20" autocomplete="off">
     </div>
-    <button id="tagproLoginBtn" class="identityToggle" type="button" title="Log in with TagPro"></button>
+    <button id="tagproLoginBtn" class="identityToggle" type="button" title="Log in with TagPro">Login</button>
   </div>
   <button id="playSoloBtn" class="modeSelectBtn">Play Solo</button>
   <button id="createGroupBtn" class="modeSelectBtn">Create Group</button>
@@ -332,7 +205,9 @@
   </div>
 
   <!-- Shown instead of a full redirect when someone opens a shared
-       /group/<code> link (see 404.html + local/main.js's linkedGroup) -
+       /group/<code> link (see 404.html + local/main.js's linkedGroup), and
+       also reused as the password prompt when clicking a locked row in the
+       Open Groups list below instead of the browser's own prompt() popup -
        everything above is still loading normally underneath, just
        covered until they either join or dismiss this. -->
   <div id="linkJoinModal" class="hidden">
@@ -344,7 +219,7 @@
           <div class="identityReserved" id="linkJoinReserved"></div>
           <input id="linkJoinNameInput" class="identityInput" placeholder="Someball" maxlength="20" autocomplete="off">
         </div>
-        <button id="linkJoinLoginToggle" class="identityToggle" type="button" title="Log in with TagPro"></button>
+        <button id="linkJoinLoginToggle" class="identityToggle" type="button" title="Log in with TagPro">Login</button>
       </div>
       <input id="linkJoinPassword" type="password" placeholder="Password (if needed)" autocomplete="off">
       <button id="linkJoinBtn">Join Game</button>

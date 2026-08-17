@@ -134,16 +134,32 @@ function initModeSelect() {
   var status   = document.getElementById('modeSelectStatus');
   var soloBtn  = document.getElementById('playSoloBtn');
   var createBtn = document.getElementById('createGroupBtn');
-  // Only present while the join-by-link modal is showing (see linkedGroup
+  // Only visible while the join-by-code card is showing (see openJoinCard
   // below) - status messages during tryJoin() mirror into it too, since
-  // #modeSelectStatus sits behind the modal's backdrop and would otherwise
+  // #modeSelectStatus sits behind the card's backdrop and would otherwise
   // update invisibly.
   var linkJoinStatusEl = document.getElementById('linkJoinStatus');
   var linkJoinBtn       = document.getElementById('linkJoinBtn');
+  var linkJoinModal     = document.getElementById('linkJoinModal');
 
   function setStatus(message) {
     status.textContent = message;
     if (linkJoinStatusEl) linkJoinStatusEl.textContent = message;
+  }
+
+  // Same on-page card for both ways of "joining from a code": a shared
+  // /group/<code> link (see the linkedGroup block below) and clicking a
+  // locked row in the Open Groups list (see refreshGroupList below) - a
+  // plain form with the password AND the display name right here on this
+  // page, never the browser's own prompt() popup and never a redirect to
+  // a different page.
+  function openJoinCard(code) {
+    if (!linkJoinModal) return;
+    document.getElementById('linkJoinCode').textContent = code;
+    document.getElementById('joinGroupCode').value = code;
+    document.getElementById('linkJoinPassword').value = '';
+    linkJoinModal.classList.remove('hidden');
+    document.getElementById('linkJoinNameInput').focus();
   }
 
   function setButtonsDisabled(disabled) {
@@ -155,6 +171,19 @@ function initModeSelect() {
   initIdentityUI();
   initIdentityUI({ nameInputId: 'linkJoinNameInput', loginBtnId: 'linkJoinLoginToggle', reservedId: 'linkJoinReserved' });
   initDuplicateTabModal();
+
+  if (linkJoinModal && linkJoinBtn) {
+    linkJoinBtn.addEventListener('click', function () {
+      document.getElementById('joinGroupPassword').value = document.getElementById('linkJoinPassword').value;
+      tryJoin();
+    });
+    document.getElementById('linkJoinPassword').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') linkJoinBtn.click();
+    });
+    document.getElementById('linkJoinDismissBtn').addEventListener('click', function () {
+      linkJoinModal.classList.add('hidden');
+    });
+  }
 
   // Carried across the reload packetApplier.js's 'kicked' handler triggers -
   // this is the first code on the mode-select screen to run afterward.
@@ -209,8 +238,8 @@ function initModeSelect() {
 
   // Live, always-on-the-homepage list of currently-open groups (worker/src/
   // roomDirectory.js) - clicking an open group's row joins it in one click;
-  // a locked one (🔒) prompts for its password right there instead of
-  // making you find and fill in a separate field. Refreshes on an
+  // a locked one (🔒) opens the join-by-code card (openJoinCard above) for
+  // its password instead of joining straight away. Refreshes on an
   // interval only while this screen is actually showing - self-cancels
   // once beginBoot() hides #modeSelect, rather than needing a separate
   // hook into that function.
@@ -251,12 +280,8 @@ function initModeSelect() {
           row.appendChild(playersCell);
 
           row.addEventListener('click', function () {
+            if (group.hasPassword) { openJoinCard(group.code); return; }
             document.getElementById('joinGroupCode').value = group.code;
-            if (group.hasPassword) {
-              var password = prompt('Password for group ' + group.code + ':');
-              if (password === null) return; // cancelled
-              document.getElementById('joinGroupPassword').value = password;
-            }
             tryJoin();
           });
 
@@ -277,33 +302,15 @@ function initModeSelect() {
   // a server-side router) skips typing the code back in by hand and skips
   // the full lobby browser too - a guest arriving this way wants exactly
   // one group, not Play Solo/Create Group/every other open room. The
-  // modal sits over the ordinary mode-select screen (already loading
+  // card sits over the ordinary mode-select screen (already loading
   // underneath, never navigated away from - see #linkJoinModal's CSS
   // comment) rather than replacing it, so "Browse groups instead" just
   // dismisses down to a screen that's already there. Doesn't auto-join:
   // a guest arriving this way has never seen the identity row yet, and
   // joining before they've had a chance to pick a name would lock them
   // into whatever's already saved (or nothing at all).
-  var linkedGroup    = new URLSearchParams(location.search).get('group');
-  var linkJoinModal  = document.getElementById('linkJoinModal');
-  if (linkedGroup && linkJoinModal) {
-    var code = linkedGroup.toUpperCase();
-    document.getElementById('linkJoinCode').textContent = code;
-    document.getElementById('joinGroupCode').value = code;
-    linkJoinModal.classList.remove('hidden');
-    document.getElementById('linkJoinNameInput').focus();
-
-    linkJoinBtn.addEventListener('click', function () {
-      document.getElementById('joinGroupPassword').value = document.getElementById('linkJoinPassword').value;
-      tryJoin();
-    });
-    document.getElementById('linkJoinPassword').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') linkJoinBtn.click();
-    });
-    document.getElementById('linkJoinDismissBtn').addEventListener('click', function () {
-      linkJoinModal.classList.add('hidden');
-    });
-  }
+  var linkedGroup = new URLSearchParams(location.search).get('group');
+  if (linkedGroup) openJoinCard(linkedGroup.toUpperCase());
 }
 
 document.addEventListener('DOMContentLoaded', initModeSelect);
