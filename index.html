@@ -130,12 +130,13 @@
   #loadingSpinner { width: 32px; height: 32px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: loadingSpin 0.8s linear infinite; }
   @keyframes loadingSpin { to { transform: rotate(360deg); } }
 
-  /* ---- mode select: Play Solo / Create Group / Join Group by code -
-     shown first, before any engine/network boot work starts. Outlined and
-     compact, same instrument-panel language as .menuBtn elsewhere (see
-     that rule's comment) - a filled 220px pill was the one place left
-     that still read as generic "app" chrome instead of BamBall's own
-     console look. */
+  /* ---- mode select: Play Solo / Create Group / browse+join the Open
+     Groups list - shown first, before any engine/network boot work
+     starts. Outlined and compact, same instrument-panel language as
+     .menuBtn elsewhere (see that rule's comment) - a filled 220px pill
+     was the one place left that still read as generic "app" chrome
+     instead of BamBall's own console look. No manual "type a code+
+     password" join anymore - see #joinGroupCode's comment below. */
   #modeSelect { position: absolute; inset: 0; background: var(--bg); z-index: 400; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text); }
   #modeSelect h1 { font-size: 13px; margin: 0 0 6px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px; }
   /* Class-scoped, not "#modeSelect button" - the join-by-link modal below
@@ -145,10 +146,6 @@
   .modeSelectBtn { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; padding: 8px 16px; border: 1px solid var(--line-bright); border-radius: var(--radius); cursor: pointer; background: transparent; color: var(--text); width: 200px; transition: border-color 0.12s, color 0.12s; }
   .modeSelectBtn:hover { border-color: var(--accent); color: var(--accent); }
   .modeSelectBtn:disabled { opacity: 0.35; cursor: default; }
-  #joinGroupRow { display: flex; gap: 8px; align-items: center; }
-  #joinGroupRow input { font-size: 14px; font-family: var(--mono); padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 110px; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
-  #joinGroupRow input:focus { outline: none; border-color: var(--accent); }
-  #joinGroupRow button { width: auto; padding: 8px 14px; }
   #createGroupPassword { font-size: 13px; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 200px; box-sizing: border-box; text-align: center; }
   #createGroupPassword:focus { outline: none; border-color: var(--accent); }
   #modeSelectStatus { font-size: 12px; color: var(--danger); min-height: 16px; }
@@ -217,14 +214,18 @@
      click-to-join). Always visible, not behind a button - see local/
      main.js's refreshGroupList(). ---- */
   .groupListLabel { font-size: 11px; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin-top: 4px; }
-  #groupList { width: 420px; max-height: 220px; overflow-y: auto; margin-top: 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
-  #groupTable { width: 100%; border-collapse: collapse; font-size: 13px; }
-  #groupTable thead th { position: sticky; top: 0; background: var(--panel-raised); color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
-  #groupTable th.groupLockCol, #groupTable td.groupLockCol { width: 20px; text-align: center; padding-left: 8px; padding-right: 0; }
-  #groupTable th.groupPlayersCol, #groupTable td.groupPlayersCol { text-align: right; padding-right: 12px; font-family: var(--mono); }
+  /* This IS the join flow now, not a fallback next to a code box (removed -
+     see #joinGroupCode's comment) - sized to actually show most of a
+     room's worth of open groups at once instead of a cramped 220px
+     peephole. */
+  #groupList { width: 600px; max-height: 420px; overflow-y: auto; margin-top: 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+  #groupTable { width: 100%; border-collapse: collapse; font-size: 14px; }
+  #groupTable thead th { position: sticky; top: 0; background: var(--panel-raised); color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  #groupTable th.groupLockCol, #groupTable td.groupLockCol { width: 24px; text-align: center; padding-left: 10px; padding-right: 0; }
+  #groupTable th.groupPlayersCol, #groupTable td.groupPlayersCol { text-align: right; padding-right: 14px; font-family: var(--mono); }
   #groupTable tbody tr { cursor: pointer; border-bottom: 1px solid var(--line); }
   #groupTable tbody tr:hover { background: var(--accent-dim); }
-  #groupTable td { padding: 7px 10px; color: var(--text); }
+  #groupTable td { padding: 9px 12px; color: var(--text); }
   #groupTable td.groupCodeCol { font-family: var(--mono); letter-spacing: 1px; color: var(--accent); }
   #groupTable td.groupHostCol { color: var(--text-dim); }
   .groupListEmptyRow td { font-size: 12px; color: var(--text-dim); text-align: center; padding: 14px; cursor: default; }
@@ -312,11 +313,13 @@
   <button id="playSoloBtn" class="modeSelectBtn">Play Solo</button>
   <button id="createGroupBtn" class="modeSelectBtn">Create Group</button>
   <input id="createGroupPassword" type="password" placeholder="Group password (optional)" autocomplete="off">
-  <div id="joinGroupRow">
-    <input id="joinGroupCode" placeholder="CODE" maxlength="6">
-    <input id="joinGroupPassword" type="password" placeholder="Password" autocomplete="off">
-    <button id="joinGroupBtn" class="modeSelectBtn">Join Group</button>
-  </div>
+  <!-- No manual "type a code" join anymore - joining is click-a-row-in-
+       the-list or follow-a-link only (local/main.js's refreshGroupList
+       row click / linkedGroup modal). These two still hold the code/
+       password tryJoin() actually reads; they're just never
+       hand-typed into now. -->
+  <input id="joinGroupCode" type="hidden">
+  <input id="joinGroupPassword" type="hidden">
   <div id="modeSelectStatus"></div>
   <div class="groupListLabel">Open Groups</div>
   <div id="groupList">

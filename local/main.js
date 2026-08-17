@@ -134,7 +134,6 @@ function initModeSelect() {
   var status   = document.getElementById('modeSelectStatus');
   var soloBtn  = document.getElementById('playSoloBtn');
   var createBtn = document.getElementById('createGroupBtn');
-  var joinBtn  = document.getElementById('joinGroupBtn');
   // Only present while the join-by-link modal is showing (see linkedGroup
   // below) - status messages during tryJoin() mirror into it too, since
   // #modeSelectStatus sits behind the modal's backdrop and would otherwise
@@ -150,7 +149,6 @@ function initModeSelect() {
   function setButtonsDisabled(disabled) {
     soloBtn.disabled = disabled;
     createBtn.disabled = disabled;
-    joinBtn.disabled = disabled;
     if (linkJoinBtn) linkJoinBtn.disabled = disabled;
   }
 
@@ -208,11 +206,6 @@ function initModeSelect() {
       setStatus('Could not join: ' + err.message);
     });
   }
-
-  joinBtn.addEventListener('click', tryJoin);
-  document.getElementById('joinGroupCode').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') tryJoin();
-  });
 
   // Live, always-on-the-homepage list of currently-open groups (worker/src/
   // roomDirectory.js) - clicking an open group's row joins it in one click;
