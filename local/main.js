@@ -90,6 +90,12 @@ async function start(bootFn) {
 function beginBoot(transport, bootFn) {
   activeTransport = transport;
   document.getElementById('modeSelect').classList.add('hidden');
+  // Nested inside #modeSelect, so the hide above already covers it visually -
+  // this only matters for the rare case a join succeeds while the modal's
+  // own listeners are still attached to a modeSelect that's about to be
+  // gone; harmless no-op otherwise.
+  var linkJoinModal = document.getElementById('linkJoinModal');
+  if (linkJoinModal) linkJoinModal.classList.add('hidden');
   document.getElementById('loadingOverlay').classList.remove('hidden');
   start(bootFn);
 }
@@ -129,14 +135,27 @@ function initModeSelect() {
   var soloBtn  = document.getElementById('playSoloBtn');
   var createBtn = document.getElementById('createGroupBtn');
   var joinBtn  = document.getElementById('joinGroupBtn');
+  // Only present while the join-by-link modal is showing (see linkedGroup
+  // below) - status messages during tryJoin() mirror into it too, since
+  // #modeSelectStatus sits behind the modal's backdrop and would otherwise
+  // update invisibly.
+  var linkJoinStatusEl = document.getElementById('linkJoinStatus');
+  var linkJoinBtn       = document.getElementById('linkJoinBtn');
+
+  function setStatus(message) {
+    status.textContent = message;
+    if (linkJoinStatusEl) linkJoinStatusEl.textContent = message;
+  }
 
   function setButtonsDisabled(disabled) {
     soloBtn.disabled = disabled;
     createBtn.disabled = disabled;
     joinBtn.disabled = disabled;
+    if (linkJoinBtn) linkJoinBtn.disabled = disabled;
   }
 
   initIdentityUI();
+  initIdentityUI({ nameInputId: 'linkJoinNameInput', loginBtnId: 'linkJoinLoginToggle', reservedId: 'linkJoinReserved' });
   initDuplicateTabModal();
 
   // Carried across the reload packetApplier.js's 'kicked' handler triggers -
@@ -171,10 +190,10 @@ function initModeSelect() {
 
   function tryJoin() {
     var code = document.getElementById('joinGroupCode').value.trim();
-    if (!code) { status.textContent = 'Enter a group code first.'; return; }
+    if (!code) { setStatus('Enter a group code first.'); return; }
     var password = document.getElementById('joinGroupPassword').value;
     setButtonsDisabled(true);
-    status.textContent = 'Connecting to host…';
+    setStatus('Connecting to host…');
 
     webrtcTransport.joinGroup(code, password, currentIdentity()).then(function () {
       setButtonsDisabled(false);
@@ -182,10 +201,11 @@ function initModeSelect() {
     }).catch(function (err) {
       // Bad code, host offline, or (no TURN server - accepted gap) a
       // strict NAT couldn't reach them directly. Stays right here on
-      // mode select with the code still in the box, not stranded on a
-      // stuck loading screen.
+      // mode select (or the link-join modal, if that's how they got here)
+      // with the code still in the box, not stranded on a stuck loading
+      // screen.
       setButtonsDisabled(false);
-      status.textContent = 'Could not join: ' + err.message;
+      setStatus('Could not join: ' + err.message);
     });
   }
 
@@ -261,18 +281,35 @@ function initModeSelect() {
 
   // A group code shared as a link (menu.js's "Copy link" button builds a
   // real /group/<code> path - see 404.html for how that resolves without
-  // a server-side router) skips typing the code back in by hand - prefill
-  // it, but deliberately DON'T auto-join: a guest arriving this way has
-  // never seen the identity row yet, and joining before they've had a
-  // chance to pick a name would lock them into whatever's already saved
-  // (or nothing at all). Focusing the name field instead puts them right
-  // where they need to be to fix that before clicking Join Group
-  // themselves - same as anyone starting from the lobby directly.
-  var linkedGroup = new URLSearchParams(location.search).get('group');
-  if (linkedGroup) {
-    document.getElementById('joinGroupCode').value = linkedGroup.toUpperCase();
-    status.textContent = 'Joining group ' + linkedGroup.toUpperCase() + ' - pick a name, then click Join Group.';
-    document.getElementById('displayNameInput').focus();
+  // a server-side router) skips typing the code back in by hand and skips
+  // the full lobby browser too - a guest arriving this way wants exactly
+  // one group, not Play Solo/Create Group/every other open room. The
+  // modal sits over the ordinary mode-select screen (already loading
+  // underneath, never navigated away from - see #linkJoinModal's CSS
+  // comment) rather than replacing it, so "Browse groups instead" just
+  // dismisses down to a screen that's already there. Doesn't auto-join:
+  // a guest arriving this way has never seen the identity row yet, and
+  // joining before they've had a chance to pick a name would lock them
+  // into whatever's already saved (or nothing at all).
+  var linkedGroup    = new URLSearchParams(location.search).get('group');
+  var linkJoinModal  = document.getElementById('linkJoinModal');
+  if (linkedGroup && linkJoinModal) {
+    var code = linkedGroup.toUpperCase();
+    document.getElementById('linkJoinCode').textContent = code;
+    document.getElementById('joinGroupCode').value = code;
+    linkJoinModal.classList.remove('hidden');
+    document.getElementById('linkJoinNameInput').focus();
+
+    linkJoinBtn.addEventListener('click', function () {
+      document.getElementById('joinGroupPassword').value = document.getElementById('linkJoinPassword').value;
+      tryJoin();
+    });
+    document.getElementById('linkJoinPassword').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') linkJoinBtn.click();
+    });
+    document.getElementById('linkJoinDismissBtn').addEventListener('click', function () {
+      linkJoinModal.classList.add('hidden');
+    });
   }
 }
 

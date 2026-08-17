@@ -131,15 +131,25 @@
   @keyframes loadingSpin { to { transform: rotate(360deg); } }
 
   /* ---- mode select: Play Solo / Create Group / Join Group by code -
-     shown first, before any engine/network boot work starts. */
-  #modeSelect { position: absolute; inset: 0; background: var(--bg); z-index: 400; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--text); }
+     shown first, before any engine/network boot work starts. Outlined and
+     compact, same instrument-panel language as .menuBtn elsewhere (see
+     that rule's comment) - a filled 220px pill was the one place left
+     that still read as generic "app" chrome instead of BamBall's own
+     console look. */
+  #modeSelect { position: absolute; inset: 0; background: var(--bg); z-index: 400; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text); }
   #modeSelect h1 { font-size: 13px; margin: 0 0 6px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px; }
-  #modeSelect button { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; padding: 12px 28px; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; color: #fff; background: var(--go); width: 220px; }
+  /* Class-scoped, not "#modeSelect button" - the join-by-link modal below
+     nests its own differently-styled buttons (.identityToggle, #linkJoinBtn)
+     inside #modeSelect too, and an id+element descendant selector would
+     out-specificity their own ids and clobber them. */
+  .modeSelectBtn { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; padding: 8px 16px; border: 1px solid var(--line-bright); border-radius: var(--radius); cursor: pointer; background: transparent; color: var(--text); width: 200px; transition: border-color 0.12s, color 0.12s; }
+  .modeSelectBtn:hover { border-color: var(--accent); color: var(--accent); }
+  .modeSelectBtn:disabled { opacity: 0.35; cursor: default; }
   #joinGroupRow { display: flex; gap: 8px; align-items: center; }
-  #joinGroupRow input { font-size: 16px; font-family: var(--mono); padding: 11px 14px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 130px; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
+  #joinGroupRow input { font-size: 14px; font-family: var(--mono); padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 110px; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
   #joinGroupRow input:focus { outline: none; border-color: var(--accent); }
-  #joinGroupRow button { width: auto; background: transparent; border-color: var(--accent) !important; color: var(--accent); }
-  #createGroupPassword { font-size: 14px; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 220px; box-sizing: border-box; text-align: center; }
+  #joinGroupRow button { width: auto; padding: 8px 14px; }
+  #createGroupPassword { font-size: 13px; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 200px; box-sizing: border-box; text-align: center; }
   #createGroupPassword:focus { outline: none; border-color: var(--accent); }
   #modeSelectStatus { font-size: 12px; color: var(--danger); min-height: 16px; }
 
@@ -152,16 +162,54 @@
   #duplicateGuestBtn { background: var(--accent-dim); border-color: var(--accent) !important; color: var(--accent); }
   #duplicateReplaceBtn { background: var(--danger-dim); border-color: var(--danger) !important; color: var(--danger); margin-bottom: 0; }
 
-  /* ---- identity: display name + optional TagPro login, shown above the
-     mode buttons - see local/tagproLogin.js. Stays editable even while
-     logged in - green text is just a live "this matches your verified
-     name" signal (local/tagproLogin.js's updateNameColor), not a lock;
-     editing it away is how you deliberately drop back to an unverified
-     custom name. ---- */
-  #identityRow { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-  #displayNameInput { font-size: 14px; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 150px; box-sizing: border-box; }
-  #displayNameInput:focus { outline: none; border-color: var(--accent); }
-  #tagproLoginBtn { width: auto; font-size: 12px; font-weight: 600; padding: 8px 14px; background: transparent; border-color: var(--accent) !important; color: var(--accent); }
+  /* ---- join-by-link modal: someone opened a /group/<code> link. Same
+     card-over-backdrop pattern as #duplicateTabModal, laid over the
+     ordinary mode-select screen (already loading underneath, never
+     navigated away from) instead of dumping a stranger onto the full
+     lobby browser they never asked for - just pick a name and join.
+     "Browse groups instead" dismisses it back to the normal screen,
+     already there underneath. Nested inside #modeSelect so main.js's
+     existing beginBoot() hide covers this for free once a join
+     succeeds. ---- */
+  #linkJoinModal { position: absolute; inset: 0; background: rgba(0,0,0,0.75); z-index: 450; display: flex; align-items: center; justify-content: center; }
+  #linkJoinCard { width: 100%; max-width: 300px; background: var(--panel); border: 1px solid var(--line-bright); border-radius: var(--radius); padding: 20px; box-sizing: border-box; }
+  #linkJoinCard h2 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; }
+  #linkJoinCode { margin: 0 0 14px; font-size: 20px; font-family: var(--mono); letter-spacing: 3px; color: var(--accent); }
+  #linkJoinModal .identityRow { margin-bottom: 10px; }
+  #linkJoinPassword { font-size: 13px; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+  #linkJoinPassword:focus { outline: none; border-color: var(--accent); }
+  #linkJoinBtn { width: 100%; font-size: 13px; font-weight: 600; padding: 9px; border: 1px solid var(--accent); border-radius: var(--radius); cursor: pointer; background: var(--accent-dim); color: var(--accent); margin-bottom: 8px; transition: opacity 0.12s; }
+  #linkJoinBtn:disabled { opacity: 0.35; cursor: default; }
+  #linkJoinDismissBtn { width: 100%; font-size: 12px; padding: 6px; border: none; background: none; cursor: pointer; color: var(--text-dim); }
+  #linkJoinDismissBtn:hover { color: var(--text); }
+  #linkJoinStatus { font-size: 12px; color: var(--danger); min-height: 14px; margin-top: 2px; text-align: center; }
+
+  /* ---- identity: display name + optional TagPro login. Two instances
+     share this markup - the mode-select row (local/tagproLogin.js) and
+     the join-by-link modal above - both read/write the same localStorage
+     preference, so whichever one you touch is what the other shows next.
+     The verified name lives in a small label ABOVE the box, not baked
+     into the box itself - the box always holds exactly what you're about
+     to play as, editable at all times. Green text is just a live "this
+     matches your verified name" signal (local/tagproLogin.js's
+     updateNameColor), not a lock; editing the box away from it is how
+     you deliberately drop back to an unverified custom name without
+     logging out. Login itself is a small switch, not a button - it's a
+     rare, secondary action next to "pick a name and play," and doesn't
+     deserve the same visual weight. ---- */
+  .identityRow { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 4px; }
+  .identityNameCol { display: flex; flex-direction: column; gap: 2px; }
+  .identityReserved { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; height: 12px; line-height: 12px; }
+  .identityInput { font-size: 14px; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); width: 150px; box-sizing: border-box; }
+  .identityInput:focus { outline: none; border-color: var(--accent); }
+  /* No label text on the switch itself - the name box right next to it,
+     plus the title tooltip, already say what it does. "On" pulls the
+     knob to the accent side and tints the track; "off" is a plain
+     outline. */
+  .identityToggle { position: relative; width: 34px; height: 18px; flex-shrink: 0; border-radius: 999px; border: 1px solid var(--line-bright); background: var(--panel); padding: 0; cursor: pointer; }
+  .identityToggle::after { content: ''; position: absolute; top: 1px; left: 1px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-dim); transition: transform 0.15s, background 0.15s; }
+  .identityToggle.on { border-color: var(--accent); background: var(--accent-dim); }
+  .identityToggle.on::after { transform: translateX(16px); background: var(--accent); }
 
   /* ---- homepage open-groups list: a real table, not stacked cards -
      styled after HaxBall's own room browser (dense rows, muted uppercase
@@ -254,17 +302,20 @@
 <body>
 <div id="modeSelect">
   <h1>Play a match</h1>
-  <div id="identityRow">
-    <input id="displayNameInput" placeholder="Someball" maxlength="20" autocomplete="off">
-    <button id="tagproLoginBtn">Log in with TagPro</button>
+  <div id="identityRow" class="identityRow">
+    <div class="identityNameCol">
+      <div class="identityReserved" id="displayNameReserved"></div>
+      <input id="displayNameInput" class="identityInput" placeholder="Someball" maxlength="20" autocomplete="off">
+    </div>
+    <button id="tagproLoginBtn" class="identityToggle" type="button" title="Log in with TagPro"></button>
   </div>
-  <button id="playSoloBtn">Play Solo</button>
-  <button id="createGroupBtn">Create Group</button>
+  <button id="playSoloBtn" class="modeSelectBtn">Play Solo</button>
+  <button id="createGroupBtn" class="modeSelectBtn">Create Group</button>
   <input id="createGroupPassword" type="password" placeholder="Group password (optional)" autocomplete="off">
   <div id="joinGroupRow">
     <input id="joinGroupCode" placeholder="CODE" maxlength="6">
     <input id="joinGroupPassword" type="password" placeholder="Password" autocomplete="off">
-    <button id="joinGroupBtn">Join Group</button>
+    <button id="joinGroupBtn" class="modeSelectBtn">Join Group</button>
   </div>
   <div id="modeSelectStatus"></div>
   <div class="groupListLabel">Open Groups</div>
@@ -275,6 +326,28 @@
       </thead>
       <tbody id="groupListRows"><tr class="groupListEmptyRow"><td colspan="4">Loading…</td></tr></tbody>
     </table>
+  </div>
+
+  <!-- Shown instead of a full redirect when someone opens a shared
+       /group/<code> link (see 404.html + local/main.js's linkedGroup) -
+       everything above is still loading normally underneath, just
+       covered until they either join or dismiss this. -->
+  <div id="linkJoinModal" class="hidden">
+    <div id="linkJoinCard">
+      <h2>Join group</h2>
+      <div id="linkJoinCode"></div>
+      <div id="linkJoinIdentityRow" class="identityRow">
+        <div class="identityNameCol">
+          <div class="identityReserved" id="linkJoinReserved"></div>
+          <input id="linkJoinNameInput" class="identityInput" placeholder="Someball" maxlength="20" autocomplete="off">
+        </div>
+        <button id="linkJoinLoginToggle" class="identityToggle" type="button" title="Log in with TagPro"></button>
+      </div>
+      <input id="linkJoinPassword" type="password" placeholder="Password (if needed)" autocomplete="off">
+      <button id="linkJoinBtn">Join Game</button>
+      <button id="linkJoinDismissBtn" type="button">Browse groups instead</button>
+      <div id="linkJoinStatus"></div>
+    </div>
   </div>
 </div>
 <!-- Shown mid-connect (before #modeSelect ever hides) when this browser

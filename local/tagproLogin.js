@@ -33,9 +33,29 @@ function currentIdentity() {
   return { name: typedName || null, tagpro: null };
 }
 
-function initIdentityUI() {
-  var nameInput = document.getElementById('displayNameInput');
-  var loginBtn  = document.getElementById('tagproLoginBtn');
+// Every initIdentityUI() call registers its render() here - both the
+// mode-select row and the join-by-link modal's row read/write the SAME
+// localStorage-backed state (loadDisplayNamePref/TagproAuth.getIdentity
+// take no element-specific arguments), so whichever one you actually
+// touched, every OTHER instance re-renders to match immediately - no
+// stale box left behind if you dismiss the modal, or open it, after
+// editing the other one.
+var identityUIInstances = [];
+
+function refreshIdentityUIInstances() {
+  for (var i = 0; i < identityUIInstances.length; i++) identityUIInstances[i]();
+}
+
+// ids: { nameInputId, loginBtnId, reservedId }, defaulting to the
+// mode-select row's own ids - callers with a second instance (the
+// join-by-link modal) pass their own set. Each is fully independent DOM
+// wise, but see identityUIInstances above for why they never go stale
+// relative to each other.
+function initIdentityUI(ids) {
+  ids = ids || {};
+  var nameInput    = document.getElementById(ids.nameInputId    || 'displayNameInput');
+  var loginBtn     = document.getElementById(ids.loginBtnId     || 'tagproLoginBtn');
+  var reservedLabel = document.getElementById(ids.reservedId    || 'displayNameReserved');
   if (!nameInput || !loginBtn) return;
 
   // Green only while the field's current text still matches the verified
@@ -55,13 +75,24 @@ function initIdentityUI() {
     // own "verified" step separately seeds this on a FRESH login, which
     // is the case that actually needs the auto-fill.
     if (identity && !loadDisplayNamePref()) saveDisplayNamePref(identity.reservedName);
-    nameInput.value = loadDisplayNamePref();
-    loginBtn.textContent = identity ? 'Log out of TagPro' : 'Log in with TagPro';
+    // Skip the reassignment when it's already an exact match (the instance
+    // the user is actively typing into, right after its own 'input' event
+    // saved this exact value) - some browsers reset the cursor to the end
+    // on any .value set, even to an identical string.
+    if (nameInput.value !== loadDisplayNamePref()) nameInput.value = loadDisplayNamePref();
+
+    loginBtn.classList.toggle('on', !!identity);
+    loginBtn.title = identity
+      ? 'Logged in as ' + identity.reservedName + ' - click to log out'
+      : 'Click to log in with TagPro';
+
+    if (reservedLabel) reservedLabel.textContent = identity ? identity.reservedName : '';
+
     updateNameColor();
   }
 
   loginBtn.addEventListener('click', function () {
-    if (TagproAuth.getIdentity()) { TagproAuth.logout(); render(); return; }
+    if (TagproAuth.getIdentity()) { TagproAuth.logout(); refreshIdentityUIInstances(); return; }
     // Strips a trailing "index.html" rather than exact-matching
     // "/index.html" so this stays correct under any hosting path, not
     // just a domain root - this page is never meant to be linked/
@@ -92,8 +123,9 @@ function initIdentityUI() {
   // requiring a full log-out.
   nameInput.addEventListener('input', function () {
     saveDisplayNamePref(nameInput.value.slice(0, 20));
-    updateNameColor();
+    refreshIdentityUIInstances();
   });
 
+  identityUIInstances.push(render);
   render();
 }
