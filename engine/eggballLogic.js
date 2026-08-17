@@ -3,10 +3,12 @@
 // random player on a team, throw it (a real Box2D body, its own density/
 // friction/restitution/damping - see gameConfig.js - so it bounces off
 // walls using the room's own wallRestitution/wallFriction like everything
-// else solid), and catch it - real Box2D collision with a player, same
-// body/fixture the egg already bounces off walls with (physicsWorld.js's
-// contact listener tells the two cases apart by whether the other body is
-// a player). Also tracks the wall-bounce timestamp the 2x score bonus
+// else solid), and catch it - a second, sensor-only fixture on that same
+// body, masked to players only, so a catch is a clean overlap trigger
+// instead of two solid balls physically colliding (physicsWorld.js's
+// contact listener tells a wall-bounce and a catch apart by whether the
+// other body is a player - either fixture reports through the same
+// listener). Also tracks the wall-bounce timestamp the 2x score bonus
 // reads. Split out the same way flagLogic.js is (CODEBASE_AUDIT.md
 // pattern) - these methods reach sibling gameHelpers methods via `this.`,
 // same reasoning as flagLogic.js's own header comment.
@@ -24,7 +26,13 @@ var createEggballLogic = function(gameState, physicsWorld, config, emitter) {
       restitution:    config.eggballRestitution,
       linearDamping:  config.eggballLinearDamping,
       angularDamping: config.eggballAngularDamping,
+      // Solid fixture masked away from players - it still bounces off
+      // walls/spikes (their category is untouched), it just never
+      // physically contacts a player. Catching them is the sensor fixture
+      // below instead.
+      maskBits: 0xFFFF & ~physicsWorld.CATEGORY_PLAYER,
     });
+    physicsWorld.addSensorFixture(body, config.eggballRadius, physicsWorld.CATEGORY_PLAYER);
     body.SetUserData({ isEggball: true });
     return body;
   }

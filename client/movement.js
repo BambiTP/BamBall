@@ -10,6 +10,11 @@
 // applies on top the same frame.
 function applyJumps(players) {
   if (settingsState.movementFrozen()) return;
+  // Gravity-mode only - mirrors the server's same guard (engine/
+  // physicsHelpers.js's applyJumps). Without this, pressing up (also one
+  // of the four movement directions) launched players in standard play
+  // too, with nothing to pull them back down since gravityY is 0.
+  if (!physConfig.gravityX && !physConfig.gravityY) return;
 
   for (var i = 0; i < players.length; i++) {
     var p = players[i];

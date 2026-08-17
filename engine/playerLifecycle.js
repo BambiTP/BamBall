@@ -107,7 +107,12 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
       if (!spawns?.length) { console.error(`spawnPool not ready for "${teamStr}"`); return null; }
 
       const point  = spawns[Math.floor(Math.random() * spawns.length)];
-      const body   = physicsWorld.createDynamicBody(point.x, point.y, { friction: config.playerFriction });
+      // categoryBits: physicsWorld.js's eggball fixture masks this out so
+      // a thrown egg never physically bumps whoever's about to catch it.
+      const body   = physicsWorld.createDynamicBody(point.x, point.y, {
+        friction: config.playerFriction,
+        categoryBits: physicsWorld.CATEGORY_PLAYER,
+      });
 
       const player = {
         id,

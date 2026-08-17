@@ -26,6 +26,16 @@ class PhysicsWorld {
     this.emitter = emitter;
     this.world   = new b2World(new b2Vec2(config.gravityX, config.gravityY), true);
 
+    // Box2D collision-filter category, given to every player body
+    // (playerLifecycle.js's spawnPlayer) - engine/eggballLogic.js's egg
+    // uses it to mask its solid fixture away from players specifically
+    // (still bounces off walls/spikes for real, just never physically
+    // bumps whoever's about to catch it - catching that fixture would
+    // otherwise be indistinguishable from two balls colliding). Every
+    // other body (walls, tiles) stays on Box2D's own default category
+    // (0x0001), so this doesn't touch anything else's collisions.
+    this.CATEGORY_PLAYER = 0x0002;
+
     const listener = new b2ContactListener();
 
     listener.BeginContact = (contact) => {
@@ -33,12 +43,12 @@ class PhysicsWorld {
       const dataB = contact.GetFixtureB().GetBody().GetUserData();
       if (!dataA || !dataB) return;
 
-      // The egg's body only has solid (non-sensor) fixtures - every sensor
-      // tile (goals included) reports no collision response at all, so
-      // this only ever fires for an actual wall/spike or a player. Which
-      // one it was is passed along; engine/gameInstance.js's listener
-      // (deferred - see its own comment) sorts that into a catch or a
-      // bounce-timestamp.
+      // The egg's body carries two fixtures (engine/eggballLogic.js's
+      // makeEggballBody) - a solid one for wall/spike bounces and a
+      // sensor, masked to players only, for catching - so either kind of
+      // contact lands here the same way. Which one it was is passed
+      // along; engine/gameInstance.js's listener (deferred - see its own
+      // comment) sorts that into a catch or a bounce-timestamp.
       if (dataA.isEggball || dataB.isEggball) {
         const egg   = dataA.isEggball ? dataA : dataB;
         const other = dataA.isEggball ? dataB : dataA;
@@ -106,9 +116,28 @@ class PhysicsWorld {
     fixDef.density     = options.density     ?? this.config.density;
     fixDef.friction    = options.friction    ?? this.config.friction;
     fixDef.restitution = options.restitution ?? this.config.restitution;
+    // Defaults (categoryBits 0x0001, maskBits 0xFFFF - collide with
+    // everything) match every existing caller's prior behavior exactly;
+    // only engine/eggballLogic.js's egg passes its own maskBits.
+    if (options.categoryBits !== undefined) fixDef.filter.categoryBits = options.categoryBits;
+    if (options.maskBits     !== undefined) fixDef.filter.maskBits     = options.maskBits;
     body.CreateFixture(fixDef);
 
     return body;
+  }
+
+  // A second, sensor-only fixture on an existing body - no collision
+  // response (no bump, no bounce), just BeginContact/EndContact overlap
+  // events. engine/eggballLogic.js's egg uses this for player-catch
+  // detection alongside its own solid wall-bounce fixture from
+  // createDynamicBody above; maskBits narrows which categories it even
+  // bothers overlap-testing against (defaults to everything).
+  addSensorFixture(body, radius, maskBits) {
+    const fixDef    = new b2FixtureDef();
+    fixDef.shape    = new b2CircleShape(radius);
+    fixDef.isSensor = true;
+    if (maskBits !== undefined) fixDef.filter.maskBits = maskBits;
+    body.CreateFixture(fixDef);
   }
 
 

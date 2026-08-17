@@ -15,6 +15,12 @@ var createPhysicsHelpers = function(physicsWorld, gameState, config) {
     // frame. wasUp/jumpsRemaining are per-player so this is a no-op (0
     // charges) until something (wall contact) grants one.
     applyJumps() {
+      // Gravity-mode only - same "is gravity actually on" check
+      // counterGravity below already uses. Without this, pressing up (also
+      // one of the four movement directions) launched players in standard
+      // play too, with nothing to pull them back down since gravityY is 0.
+      if (!config.gravityX && !config.gravityY) return;
+
       for (const p of gameState.players) {
         if (p.dead || p.frozen || p.matchFrozen) continue;
 
