@@ -21,201 +21,497 @@
   // just simpler here since there's nothing to strip yet at this point.
   window.GAME_BASE_PATH = location.pathname.replace(/[^/]*$/, '');
 </script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  /* Plain styling, kept deliberately simple - basic colors, default-ish
-     borders, one accent color, no letter-spacing/uppercase/monospace
-     theming. Positioning/layout rules (position, flex, z-index) stay as-is
-     since the app needs them to actually work; only the decoration is
-     plain. */
   :root {
-    --bg:     #222;
-    --panel:  #333;
-    --text:   #fff;
-    --text-dim: #aaa;
-    --accent: #3366cc;
-    --danger: #cc3333;
-    --go:     #339933;
-    --red-team: #ff0000;
-    --blue-team: #0066ff;
-    --radius: 4px;
+    --bg-0:      #0a0d16;
+    --bg-1:      #10141f;
+    --surface:   #161c2c;
+    --surface-2: #1d2438;
+    --surface-3: #262f48;
+    --border:    rgba(255,255,255,0.08);
+    --border-2:  rgba(255,255,255,0.16);
+    --text:      #eef1fb;
+    --text-dim:  #8d94b3;
+    --text-faint:#5c6285;
+    --accent:    #6d8bff;
+    --accent-2:  #b46dff;
+    --accent-soft: rgba(109,139,255,0.16);
+    --go:        #2fd67c;
+    --go-soft:   rgba(47,214,124,0.16);
+    --warn:      #ffb648;
+    --warn-soft: rgba(255,182,72,0.16);
+    --danger:    #ff5470;
+    --danger-soft: rgba(255,84,112,0.16);
+    --red-team:  #ff4d5e;
+    --red-soft:  rgba(255,77,94,0.14);
+    --blue-team: #3f8cff;
+    --blue-soft: rgba(63,140,255,0.14);
+    --radius-sm: 8px;
+    --radius:    14px;
+    --radius-lg: 22px;
+    --shadow-lg: 0 24px 60px rgba(0,0,0,0.55);
+    --shadow-md: 0 10px 28px rgba(0,0,0,0.4);
+    --font-display: 'Rajdhani', 'Arial Narrow', ui-sans-serif, sans-serif;
+    --font-body: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+    /* aliases so shared/texturePackPicker.css (loaded into this same
+       document, no :root of its own) picks up this palette instead of
+       falling back to its own baked-in defaults */
+    --surface-0: var(--bg-1);
+    --surface-1: var(--surface);
+    --accent-dim: var(--accent-soft);
   }
 
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); overflow: hidden; font-family: Arial, sans-serif; }
-  #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-  #hud { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); color: var(--text); text-align: center; text-shadow: 1px 1px 2px #000; pointer-events: none; }
-  #hudScore { font-size: 20px; font-weight: bold; }
-  #hudTimer { font-size: 13px; color: var(--text-dim); }
-  #hudPing { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
-  #hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); color: var(--text-dim); font-size: 12px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(1200px 700px at 15% -10%, rgba(109,139,255,0.16), transparent 60%),
+      radial-gradient(1000px 600px at 110% 10%, rgba(180,109,255,0.12), transparent 55%),
+      var(--bg-0);
+    color: var(--text);
+    font-family: var(--font-body);
+  }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
   .hidden { display: none !important; }
 
-  #hudPauseToggle { position: absolute; top: 8px; right: 16px; pointer-events: auto; font-size: 12px; padding: 6px 12px; background: var(--panel); border: 1px solid #666; border-radius: var(--radius); color: var(--text); cursor: pointer; }
-  #hudPauseToggle.isPaused { background: var(--accent); }
+  button { font-family: inherit; }
+  input, select { font-family: inherit; color-scheme: dark; }
 
-  #chatBox { position: absolute; bottom: 8px; left: 8px; width: 280px; z-index: 40; }
-  #chatLog { max-height: 130px; overflow-y: auto; font-size: 12px; color: var(--text); display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; text-shadow: 1px 1px 2px #000; }
-  .chatRow { word-break: break-word; }
-  .chatRow .chatName { color: var(--accent); font-weight: bold; margin-right: 4px; }
-  #chatInput { width: 100%; box-sizing: border-box; padding: 5px 6px; background: #fff; color: #000; border: 1px solid #999; border-radius: var(--radius); font-size: 12px; }
+  /* ---------------------------------------------------------------- HUD */
+  #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 
-  .joinRow { display: flex; gap: 16px; }
-  #joinControls button { font-size: 15px; font-weight: bold; padding: 10px 24px; border: 1px solid #666; border-radius: var(--radius); cursor: pointer; color: #fff; }
-  #joinControls button:disabled { opacity: 0.4; cursor: default; }
-  #joinRedBtn { background: #cc3333; }
-  #joinRedBtn.active { outline: 3px solid yellow; }
-  #joinBlueBtn { background: #3366cc; }
-  #joinBlueBtn.active { outline: 3px solid yellow; }
-  #joinGameBtn { background: var(--go); }
-  #leaveGameBtn { background: var(--panel); color: var(--text); }
-  #leaveGroupBtn { background: var(--panel); color: var(--text); font-size: 13px; padding: 6px 14px; }
+  #hud { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); pointer-events: none; text-align: center; }
+  #hudScore {
+    font-family: var(--font-display);
+    font-size: 26px; font-weight: 700; letter-spacing: 0.5px;
+    padding: 6px 22px; border-radius: 999px;
+    background: rgba(14,17,28,0.72);
+    border: 1px solid var(--border-2);
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(8px);
+  }
+  #hudTimer { margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+  #hudPing { margin-top: 2px; font-size: 10px; color: var(--text-faint); }
 
-  #loadingOverlay { position: absolute; inset: 0; background: var(--bg); z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--text); font-size: 14px; }
-  #loadingSpinner { width: 32px; height: 32px; border: 4px solid #666; border-top-color: var(--accent); border-radius: 50%; animation: loadingSpin 0.8s linear infinite; }
+  #hint {
+    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+    color: var(--text-faint); font-size: 11px; letter-spacing: 0.5px;
+    background: rgba(14,17,28,0.55); padding: 4px 10px; border-radius: 999px;
+    pointer-events: none;
+  }
+
+  #hudPauseToggle {
+    position: absolute; top: 14px; right: 18px; pointer-events: auto;
+    font-size: 12px; font-weight: 600; padding: 9px 18px;
+    background: rgba(14,17,28,0.72); border: 1px solid var(--border-2); border-radius: 999px;
+    color: var(--text); cursor: pointer; backdrop-filter: blur(8px);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  #hudPauseToggle:hover { border-color: var(--accent); }
+  #hudPauseToggle.isPaused { background: var(--go); border-color: var(--go); color: #06251a; }
+
+  /* --------------------------------------------------------------- Chat */
+  #chatBox { position: absolute; bottom: 10px; left: 10px; width: 300px; z-index: 40; }
+  #chatLog {
+    max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px;
+    margin-bottom: 6px; padding: 8px 10px; font-size: 12.5px;
+    background: rgba(14,17,28,0.55); border-radius: var(--radius-sm);
+  }
+  .chatRow { word-break: break-word; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+  .chatRow .chatName { color: var(--accent); font-weight: 700; margin-right: 5px; }
+  #chatInput {
+    width: 100%; padding: 9px 12px; background: rgba(14,17,28,0.72); color: var(--text);
+    border: 1px solid var(--border-2); border-radius: var(--radius-sm); font-size: 12.5px;
+    backdrop-filter: blur(6px);
+  }
+  #chatInput::placeholder { color: var(--text-faint); }
+  #chatInput:focus { outline: none; border-color: var(--accent); }
+
+  /* ----------------------------------------------------------- Loading */
+  #loadingOverlay {
+    position: absolute; inset: 0; z-index: 500; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: var(--bg-0); color: var(--text); font-size: 14px;
+  }
+  #loadingSpinner {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 3px solid var(--border-2); border-top-color: var(--accent);
+    animation: loadingSpin 0.7s linear infinite;
+  }
   @keyframes loadingSpin { to { transform: rotate(360deg); } }
 
-  #modeSelect { position: absolute; inset: 0; background: var(--bg); z-index: 400; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text); }
-  #modeSelect h1 { font-size: 20px; margin: 0 0 10px; color: var(--text); }
-  .modeSelectBtn { font-size: 14px; font-weight: bold; padding: 10px 20px; border: 1px solid #666; border-radius: var(--radius); cursor: pointer; background: var(--panel); color: var(--text); width: 200px; }
-  .modeSelectBtn:hover { background: var(--accent); }
-  .modeSelectBtn:disabled { opacity: 0.4; cursor: default; }
-  #createGroupPassword { font-size: 14px; padding: 8px; border-radius: var(--radius); border: 1px solid #999; width: 200px; box-sizing: border-box; text-align: center; }
-  #modeSelectStatus { font-size: 12px; color: var(--danger); min-height: 16px; }
+  /* -------------------------------------------------------- Title card */
+  #modeSelect {
+    position: absolute; inset: 0; z-index: 400; overflow-y: auto;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 16px 60px;
+  }
+  .titleLogo {
+    margin: 20px 0 26px; display: flex; align-items: center; gap: 12px;
+  }
+  .titleLogoBall {
+    width: 34px; height: 34px; border-radius: 50%; flex: none;
+    background: radial-gradient(circle at 32% 28%, #fff, var(--accent) 45%, var(--accent-2) 100%);
+    box-shadow: 0 0 22px rgba(109,139,255,0.55);
+  }
+  .titleLogo h1 {
+    margin: 0; font-family: var(--font-display); font-weight: 700;
+    font-size: 40px; letter-spacing: 2px; text-transform: uppercase;
+    background: linear-gradient(90deg, #ffffff, var(--accent) 55%, var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
 
-  #duplicateTabModal { position: absolute; inset: 0; background: rgba(0,0,0,0.75); z-index: 550; display: flex; align-items: center; justify-content: center; }
-  #duplicateTabCard { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid #666; border-radius: var(--radius); padding: 24px; box-sizing: border-box; text-align: center; }
-  #duplicateTabText { color: var(--text); font-size: 14px; margin-bottom: 18px; }
-  #duplicateTabCard button { width: 100%; font-size: 14px; padding: 11px; border: 1px solid #666; border-radius: var(--radius); cursor: pointer; color: #fff; margin-bottom: 8px; }
-  #duplicateGuestBtn { background: var(--accent); }
-  #duplicateReplaceBtn { background: var(--danger); margin-bottom: 0; }
+  .titleCard {
+    width: 100%; max-width: 420px; padding: 26px; border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, var(--surface), var(--bg-1));
+    border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+  }
+  .titleSectionLabel {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--text-faint); margin: 22px 0 8px;
+  }
+  .titleSectionLabel:first-child { margin-top: 0; }
 
-  /* Join-by-code card: used both for a shared /group/<code> link and for
-     clicking a locked room in the Open Groups list below - a plain form
-     right on this page instead of the browser's own prompt() popup. */
-  #linkJoinModal { position: absolute; inset: 0; background: rgba(0,0,0,0.75); z-index: 450; display: flex; align-items: center; justify-content: center; }
-  #linkJoinCard { width: 100%; max-width: 300px; background: var(--panel); border: 1px solid #666; border-radius: var(--radius); padding: 20px; box-sizing: border-box; }
-  #linkJoinCard h2 { margin: 0 0 8px; font-size: 16px; color: var(--text); }
-  #linkJoinCode { margin: 0 0 14px; font-size: 20px; letter-spacing: 2px; color: var(--accent); }
-  #linkJoinModal .identityRow { margin-bottom: 10px; }
-  #linkJoinPassword { font-size: 14px; padding: 8px; border-radius: var(--radius); border: 1px solid #999; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
-  #linkJoinBtn { width: 100%; font-size: 14px; font-weight: bold; padding: 9px; border: 1px solid #666; border-radius: var(--radius); cursor: pointer; background: var(--go); color: #fff; margin-bottom: 8px; }
-  #linkJoinBtn:disabled { opacity: 0.4; cursor: default; }
-  #linkJoinDismissBtn { width: 100%; font-size: 12px; padding: 6px; border: none; background: none; cursor: pointer; color: var(--text-dim); text-decoration: underline; }
-  #linkJoinStatus { font-size: 12px; color: var(--danger); min-height: 14px; margin-top: 2px; text-align: center; }
+  .identityRow { display: flex; gap: 8px; align-items: flex-end; }
+  .identityNameCol { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+  .identityReserved { font-size: 10px; color: var(--go); height: 12px; line-height: 12px; font-weight: 600; }
+  .identityInput {
+    font-size: 14px; padding: 11px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text);
+    width: 100%;
+  }
+  .identityInput:focus { outline: none; border-color: var(--accent); }
+  .identityToggle {
+    flex: none; padding: 11px 14px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-dim);
+    cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s;
+  }
+  .identityToggle:hover { border-color: var(--accent); color: var(--text); }
+  .identityToggle.on { background: var(--go-soft); border-color: var(--go); color: var(--go); }
 
-  /* identity: display name + optional TagPro login. Two instances share
-     this markup - the mode-select row and the join-by-code card above -
-     both read/write the same localStorage preference. */
-  .identityRow { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 4px; }
-  .identityNameCol { display: flex; flex-direction: column; gap: 2px; }
-  .identityReserved { font-size: 10px; color: var(--text-dim); height: 12px; line-height: 12px; }
-  .identityInput { font-size: 14px; padding: 8px; border-radius: var(--radius); border: 1px solid #999; width: 150px; box-sizing: border-box; }
-  .identityToggle { padding: 8px 10px; border: 1px solid #666; border-radius: var(--radius); background: var(--panel); color: var(--text); cursor: pointer; font-size: 12px; }
-  .identityToggle.on { background: var(--accent); }
+  .titleActions { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+  .modeSelectBtn {
+    font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: 0.5px;
+    padding: 13px 20px; border-radius: var(--radius-sm); border: 1px solid transparent;
+    cursor: pointer; width: 100%; transition: transform 0.1s, filter 0.15s, box-shadow 0.15s;
+  }
+  .modeSelectBtn:active { transform: scale(0.98); }
+  .modeSelectBtn:disabled { opacity: 0.4; cursor: default; transform: none; }
+  #playSoloBtn {
+    color: #fff; background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    box-shadow: 0 10px 26px rgba(109,139,255,0.35);
+  }
+  #playSoloBtn:hover:not(:disabled) { filter: brightness(1.08); }
+  #createGroupBtn {
+    color: var(--text); background: var(--surface-2); border-color: var(--border-2);
+  }
+  #createGroupBtn:hover:not(:disabled) { border-color: var(--accent); color: #fff; }
 
-  /* homepage open-groups list - a plain table, click a row to join. */
-  .groupListLabel { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
-  #groupList { width: 600px; max-height: 420px; overflow-y: auto; margin-top: 4px; border: 1px solid #666; border-radius: var(--radius); background: var(--panel); }
-  #groupTable { width: 100%; border-collapse: collapse; font-size: 14px; }
-  #groupTable thead th { position: sticky; top: 0; background: var(--panel); color: var(--text-dim); font-size: 12px; font-weight: bold; text-align: left; padding: 8px 12px; border-bottom: 1px solid #666; }
-  #groupTable th.groupLockCol, #groupTable td.groupLockCol { width: 24px; text-align: center; padding-left: 10px; padding-right: 0; }
-  #groupTable th.groupPlayersCol, #groupTable td.groupPlayersCol { text-align: right; padding-right: 14px; }
-  #groupTable tbody tr { cursor: pointer; border-bottom: 1px solid #444; }
-  #groupTable tbody tr:hover { background: var(--accent); }
-  #groupTable td { padding: 9px 12px; color: var(--text); }
-  #groupTable td.groupCodeCol { color: var(--accent); }
+  #createGroupPassword {
+    font-size: 13px; padding: 10px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text);
+    width: 100%; margin-top: 8px;
+  }
+  #createGroupPassword:focus { outline: none; border-color: var(--accent); }
+  #createGroupPassword::placeholder { color: var(--text-faint); }
+
+  #modeSelectStatus { font-size: 12.5px; color: var(--danger); min-height: 16px; margin-top: 10px; text-align: center; font-weight: 500; }
+
+  .groupListLabel { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-faint); margin: 4px 0 8px; }
+  #groupList {
+    max-height: 300px; overflow-y: auto; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface-2);
+  }
+  #groupTable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #groupTable thead th {
+    position: sticky; top: 0; background: var(--surface-2); color: var(--text-faint);
+    font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+  }
+  #groupTable th.groupLockCol, #groupTable td.groupLockCol { width: 20px; text-align: center; padding-left: 12px; padding-right: 0; }
+  #groupTable th.groupPlayersCol, #groupTable td.groupPlayersCol { text-align: right; padding-right: 16px; }
+  #groupTable tbody tr { cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  #groupTable tbody tr:hover { background: var(--accent-soft); }
+  #groupTable td { padding: 10px 12px; color: var(--text); }
+  #groupTable td.groupCodeCol { color: var(--accent); font-weight: 700; letter-spacing: 0.5px; }
   #groupTable td.groupHostCol { color: var(--text-dim); }
-  .groupListEmptyRow td { font-size: 12px; color: var(--text-dim); text-align: center; padding: 14px; cursor: default; }
+  .groupListEmptyRow td { font-size: 12.5px; color: var(--text-faint); text-align: center; padding: 18px; cursor: default; }
   .groupListEmptyRow:hover { background: none !important; }
 
-  /* ---- ESC menu ---- */
-  #menu { position: absolute; inset: 0; background: rgba(20,20,20,0.95); color: var(--text); display: flex; flex-direction: column; z-index: 100; }
-  #menuTabs { display: flex; gap: 2px; padding: 12px 16px 0; border-bottom: 1px solid #666; }
-  .menuTabBtn { background: var(--panel); border: 1px solid #666; color: var(--text-dim); padding: 10px 16px; font-size: 13px; cursor: pointer; }
-  .menuTabBtn.active { color: var(--text); background: var(--accent); }
-  #menuPanels { flex: 1; overflow: auto; padding: 20px; max-width: 900px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+  /* ------------------------------------------------------------ Modals */
+  #duplicateTabModal, #linkJoinModal {
+    position: absolute; inset: 0; z-index: 450; display: flex; align-items: center; justify-content: center;
+    background: rgba(6,7,12,0.72); backdrop-filter: blur(4px);
+  }
+  #duplicateTabModal { z-index: 550; }
+
+  #duplicateTabCard, #linkJoinCard {
+    width: 100%; max-width: 340px; padding: 26px; border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, var(--surface), var(--bg-1));
+    border: 1px solid var(--border-2); box-shadow: var(--shadow-lg);
+    animation: modalIn 0.18s ease-out;
+  }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+  #duplicateTabText { color: var(--text); font-size: 14.5px; margin-bottom: 20px; text-align: center; line-height: 1.5; }
+  #duplicateTabCard button, #linkJoinBtn {
+    width: 100%; font-size: 14px; font-weight: 700; padding: 12px; border-radius: var(--radius-sm);
+    border: 1px solid transparent; cursor: pointer; color: #fff; margin-bottom: 8px;
+  }
+  #duplicateGuestBtn, #linkJoinBtn { background: linear-gradient(120deg, var(--accent), var(--accent-2)); }
+  #duplicateReplaceBtn { background: var(--danger-soft); color: var(--danger); border-color: rgba(255,84,112,0.35); margin-bottom: 0; }
+  #linkJoinBtn:disabled { opacity: 0.4; cursor: default; }
+
+  #linkJoinCard h2 { margin: 0 0 4px; font-size: 18px; font-family: var(--font-display); font-weight: 700; letter-spacing: 0.5px; }
+  #linkJoinCode { margin: 0 0 18px; font-size: 22px; font-weight: 700; letter-spacing: 3px; color: var(--accent); font-family: var(--font-display); }
+  #linkJoinModal .identityRow { margin-bottom: 12px; }
+  #linkJoinPassword {
+    font-size: 14px; padding: 11px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text);
+    width: 100%; margin-bottom: 12px;
+  }
+  #linkJoinPassword:focus { outline: none; border-color: var(--accent); }
+  #linkJoinDismissBtn { width: 100%; font-size: 12px; padding: 6px; border: none; background: none; cursor: pointer; color: var(--text-faint); }
+  #linkJoinDismissBtn:hover { color: var(--text-dim); }
+  #linkJoinStatus { font-size: 12px; color: var(--danger); min-height: 14px; margin-top: 2px; text-align: center; font-weight: 500; }
+
+  /* ---------------------------------------------------------- Esc menu */
+  #menu {
+    position: absolute; inset: 0; z-index: 100; display: flex; flex-direction: column;
+    background: rgba(8,10,17,0.88); backdrop-filter: blur(10px);
+  }
+  #menuTabs {
+    display: flex; gap: 6px; padding: 20px 24px 0; border-bottom: 1px solid var(--border);
+    flex: none;
+  }
+  .menuTabBtn {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--text-faint); padding: 10px 6px 14px; margin-right: 22px;
+    font-size: 14px; font-weight: 600; letter-spacing: 0.3px; cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .menuTabBtn:hover { color: var(--text-dim); }
+  .menuTabBtn.active { color: var(--text); border-bottom-color: var(--accent); }
+  #menuPanels { flex: 1; overflow: auto; padding: 28px 24px 60px; max-width: 880px; margin: 0 auto; width: 100%; }
   .menuPanel.hidden { display: none; }
-  #menuCloseHint { position: absolute; top: 10px; right: 16px; color: var(--text-dim); font-size: 12px; }
+  #menuCloseHint {
+    position: absolute; top: 22px; right: 24px; color: var(--text-faint); font-size: 11.5px;
+    letter-spacing: 0.5px;
+  }
 
-  /* ---- teams tab ---- */
-  #joinControls { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #666; }
-  #teamsGrid { display: flex; gap: 16px; }
-  .teamBox { flex: 1; background: var(--panel); border: 1px solid #666; padding: 12px; min-height: 200px; }
-  .teamBox h3 { margin: 0 0 10px; font-size: 14px; }
+  /* ---- shared card + button vocabulary used across Teams/Settings ---- */
+  .panelCard {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  .panelCard h4 {
+    margin: 0 0 4px; font-size: 13px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  .controlHint { font-size: 11.5px; font-weight: 500; color: var(--text-faint); letter-spacing: 0; text-transform: none; }
+
+  .menuBtn {
+    padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-2);
+    cursor: pointer; background: var(--surface-2); color: var(--text); font-size: 12.5px; font-weight: 600;
+    margin-right: 8px; margin-top: 6px; transition: all 0.13s;
+  }
+  .menuBtn:hover { border-color: var(--accent); background: var(--surface-3); }
+
+  /* ---- teams tab ------------------------------------------------------ */
+  #joinControls {
+    display: flex; flex-direction: column; gap: 12px; align-items: center;
+    margin-bottom: 22px; padding-bottom: 22px; border-bottom: 1px solid var(--border);
+  }
+  .joinRow { display: flex; gap: 14px; }
+  #joinControls button {
+    font-size: 14px; font-weight: 700; padding: 11px 26px; border-radius: 999px;
+    border: 2px solid transparent; cursor: pointer; color: #fff; letter-spacing: 0.3px;
+    transition: all 0.14s;
+  }
+  #joinControls button:disabled { opacity: 0.35; cursor: default; }
+  #joinRedBtn { background: var(--red-soft); color: var(--red-team); border-color: rgba(255,77,94,0.35); }
+  #joinRedBtn:hover:not(:disabled) { background: var(--red-team); color: #fff; }
+  #joinRedBtn.active { background: var(--red-team); color: #fff; box-shadow: 0 0 0 3px rgba(255,77,94,0.3); }
+  #joinBlueBtn { background: var(--blue-soft); color: var(--blue-team); border-color: rgba(63,140,255,0.35); }
+  #joinBlueBtn:hover:not(:disabled) { background: var(--blue-team); color: #fff; }
+  #joinBlueBtn.active { background: var(--blue-team); color: #fff; box-shadow: 0 0 0 3px rgba(63,140,255,0.3); }
+  #joinGameBtn { background: var(--go); color: #06251a; }
+  #joinGameBtn:hover:not(:disabled) { filter: brightness(1.08); }
+  #leaveGameBtn { background: var(--surface-2); color: var(--text); border-color: var(--border-2); }
+  #leaveGroupBtn { background: none; color: var(--text-faint); border: 1px solid var(--border-2); font-size: 12.5px; padding: 7px 16px; }
+  #leaveGroupBtn:hover { color: var(--danger); border-color: var(--danger); }
+
+  #teamsGrid { display: flex; gap: 14px; }
+  .teamBox {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    border-top: 3px solid var(--border-2); padding: 14px; min-height: 200px;
+  }
+  .teamBox h3 {
+    margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+  }
+  .teamBox[data-team="red"] { border-top-color: var(--red-team); }
   .teamBox[data-team="red"] h3 { color: var(--red-team); }
+  .teamBox[data-team="blue"] { border-top-color: var(--blue-team); }
   .teamBox[data-team="blue"] h3 { color: var(--blue-team); }
-  .teamBox[data-team="spectator"] h3 { color: var(--text-dim); }
-  .playerRow { padding: 6px 8px; background: #444; border: 1px solid #666; margin-bottom: 4px; font-size: 13px; }
-  .groupCodeLine { margin-top: 16px; font-size: 12px; color: var(--text-dim); }
-  .groupCodeLine code { background: #444; border: 1px solid #666; padding: 2px 6px; color: var(--accent); }
+  .teamBox[data-team="spectator"] h3 { color: var(--text-faint); }
+  .playerRow {
+    display: flex; align-items: center; padding: 8px 10px; background: var(--surface-2);
+    border-radius: var(--radius-sm); margin-bottom: 6px; font-size: 13px;
+  }
 
-  /* ---- settings maker + record/files tabs ---- */
-  .makerRow { margin-bottom: 14px; }
-  .makerRow label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
-  .makerRow select, .makerRow input[type="text"] { width: 100%; padding: 6px; background: var(--panel); border: 1px solid #666; color: var(--text); box-sizing: border-box; }
-  .subTabBtn { background: var(--panel); border: 1px solid #666; color: var(--text-dim); padding: 4px 10px; margin: 0 4px 8px 0; cursor: pointer; font-size: 12px; }
-  .subTabBtn.active { color: var(--text); background: var(--accent); }
-  .settingRow { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; gap: 10px; border-bottom: 1px solid #444; }
-  .settingRow input, .settingRow select { background: var(--panel); border: 1px solid #666; color: var(--text); padding: 3px 6px; width: 110px; text-align: right; }
-  .settingRowControls { display: flex; align-items: center; gap: 4px; }
-  .settingApplyBtn, .settingResetBtn { padding: 3px 8px; border: 1px solid #666; background: var(--panel); color: var(--text); cursor: pointer; font-size: 11px; }
-  .settingApplyBtn:hover { background: var(--go); }
-  .settingResetBtn:hover { background: var(--danger); }
-  .physicsCategoryTitle { font-size: 12px; color: var(--text-dim); margin: 14px 0 4px; font-weight: bold; }
-  .settingsSlot { margin-bottom: 14px; }
-  .settingsSlot h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-dim); }
-  .fileStatus { font-size: 12px; color: var(--text-dim); min-height: 14px; }
-  .controlHint { font-size: 11px; font-weight: normal; color: var(--text-dim); }
-  .menuBtn { padding: 7px 14px; border: 1px solid #666; cursor: pointer; background: var(--panel); color: var(--text); font-size: 12px; margin-right: 8px; margin-top: 6px; }
-  .menuBtn:hover { background: var(--accent); }
+  #matchControls { margin-top: 18px; }
+  #matchControls h3 { margin: 0 0 4px; font-size: 12px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-faint); }
+  #matchStartBtn, #matchResumeBtn { background: var(--go-soft); color: var(--go); border-color: rgba(47,214,124,0.35); }
+  #matchStartBtn:hover, #matchResumeBtn:hover { background: var(--go); color: #06251a; }
+  #matchPauseBtn { background: var(--warn-soft); color: var(--warn); border-color: rgba(255,182,72,0.35); }
+  #matchPauseBtn:hover { background: var(--warn); color: #2a1a00; }
+  #matchEndBtn { background: var(--danger-soft); color: var(--danger); border-color: rgba(255,84,112,0.35); }
+  #matchEndBtn:hover { background: var(--danger); color: #fff; }
 
-  /* ---- control tab: map / live settings / presets / save states ---- */
-  .controlRow { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
-  .controlRow input[type="text"] { flex: 1; min-width: 140px; padding: 6px 8px; background: var(--panel); border: 1px solid #666; color: var(--text); }
-  .presetPill { display: inline-flex; align-items: center; }
-  .presetPill .menuBtn { margin-right: 0; border-right: none; }
-  .presetDeleteBtn { padding: 7px 10px; margin-right: 8px; margin-top: 6px; }
-  .presetDeleteBtn:hover { background: var(--danger); }
-  .saveStateRow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #666; margin-bottom: 4px; font-size: 13px; }
-  .saveStateRow .saveStateName { flex: 1; }
-  .saveStateRow .menuBtn { padding: 3px 10px; margin: 0; font-size: 11px; }
+  .groupCodeLine {
+    margin-top: 20px; font-size: 12.5px; color: var(--text-faint);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .groupCodeLine code {
+    background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 6px;
+    padding: 3px 8px; color: var(--accent); font-weight: 700; letter-spacing: 1px;
+  }
+  .groupCodeLine a { color: var(--accent); }
+
+  /* ---- settings / control tab ----------------------------------------- */
+  .makerRow {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  .makerRow h4 {
+    margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  .makerRow label { display: block; font-size: 12px; color: var(--text-faint); margin-bottom: 4px; }
+  .makerRow select, .makerRow input[type="text"] {
+    width: 100%; padding: 9px 10px; background: var(--surface-2); border: 1px solid var(--border-2);
+    color: var(--text); border-radius: var(--radius-sm);
+  }
+  .makerRow select:focus, .makerRow input[type="text"]:focus { outline: none; border-color: var(--accent); }
+
+  .controlRow { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .controlRow input[type="text"] { flex: 1; min-width: 160px; padding: 9px 10px; background: var(--surface-2); border: 1px solid var(--border-2); color: var(--text); border-radius: var(--radius-sm); }
+  .controlRow input[type="text"]:focus { outline: none; border-color: var(--accent); }
+
+  .presetPill { display: inline-flex; align-items: center; margin-right: 8px; margin-top: 6px; }
+  .presetPill .menuBtn { margin-right: 0; margin-top: 0; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  .presetDeleteBtn { padding: 8px 11px; margin-right: 0 !important; margin-top: 0 !important; border-radius: 0 var(--radius-sm) var(--radius-sm) 0 !important; border-left: none; color: var(--text-faint); }
+  .presetDeleteBtn:hover { background: var(--danger-soft); color: var(--danger); border-color: rgba(255,84,112,0.35); }
+
+  .fileStatus { font-size: 12px; color: var(--text-faint); min-height: 14px; margin-top: 8px; }
+
+  #controlPhysicsSubTabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .subTabBtn {
+    background: var(--surface-2); border: 1px solid var(--border-2); color: var(--text-faint);
+    padding: 6px 13px; border-radius: 999px; cursor: pointer; font-size: 11.5px; font-weight: 600;
+    transition: all 0.13s;
+  }
+  .subTabBtn:hover { color: var(--text); }
+  .subTabBtn.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+  .physicsCategoryTitle {
+    font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-faint); margin: 16px 0 6px;
+  }
+  .physicsCategoryTitle:first-child { margin-top: 0; }
+
+  .settingRow {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 4px; font-size: 13px; gap: 10px; border-bottom: 1px solid var(--border);
+  }
+  .settingRow:last-child { border-bottom: none; }
+  .settingRowControls { display: flex; align-items: center; gap: 6px; }
+  .settingRow input[type="number"], .settingRow select {
+    background: var(--surface-2); border: 1px solid var(--border-2); color: var(--text);
+    padding: 6px 8px; width: 100px; text-align: right; border-radius: var(--radius-sm); font-size: 12.5px;
+  }
+  .settingRow input[type="number"]:focus, .settingRow select:focus { outline: none; border-color: var(--accent); }
+
+  .settingRow input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none; width: 38px; height: 22px; border-radius: 999px;
+    background: var(--surface-3); border: 1px solid var(--border-2); position: relative; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .settingRow input[type="checkbox"]::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-dim); transition: transform 0.15s, background 0.15s;
+  }
+  .settingRow input[type="checkbox"]:checked { background: var(--go-soft); border-color: var(--go); }
+  .settingRow input[type="checkbox"]:checked::after { transform: translateX(16px); background: var(--go); }
+
+  .settingApplyBtn, .settingResetBtn {
+    padding: 6px 11px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-dim);
+    cursor: pointer; font-size: 11px; font-weight: 600; border-radius: var(--radius-sm); transition: all 0.13s;
+  }
+  .settingApplyBtn:hover { background: var(--go-soft); color: var(--go); border-color: rgba(47,214,124,0.4); }
+  .settingResetBtn:hover { background: var(--danger-soft); color: var(--danger); border-color: rgba(255,84,112,0.4); }
+
+  .saveStateRow {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--surface-2);
+    border-radius: var(--radius-sm); margin-bottom: 6px; font-size: 13px;
+  }
+  .saveStateRow .saveStateName { flex: 1; font-weight: 500; }
+  .saveStateRow .menuBtn { padding: 5px 12px; margin: 0; font-size: 11px; }
+
+  #texturesPanel { padding-top: 4px; }
 </style>
 <link rel="stylesheet" href="shared/texturePackPicker.css">
 </head>
 <body>
 <div id="modeSelect">
-  <h1>Play a match</h1>
-  <div id="identityRow" class="identityRow">
-    <div class="identityNameCol">
-      <div class="identityReserved" id="displayNameReserved"></div>
-      <input id="displayNameInput" class="identityInput" placeholder="Someball" maxlength="20" autocomplete="off">
+  <div class="titleLogo"><div class="titleLogoBall"></div><h1>BamBall</h1></div>
+  <div class="titleCard">
+    <div class="titleSectionLabel">Your name</div>
+    <div id="identityRow" class="identityRow">
+      <div class="identityNameCol">
+        <div class="identityReserved" id="displayNameReserved"></div>
+        <input id="displayNameInput" class="identityInput" placeholder="Someball" maxlength="20" autocomplete="off">
+      </div>
+      <button id="tagproLoginBtn" class="identityToggle" type="button" title="Log in with TagPro">Login</button>
     </div>
-    <button id="tagproLoginBtn" class="identityToggle" type="button" title="Log in with TagPro">Login</button>
-  </div>
-  <button id="playSoloBtn" class="modeSelectBtn">Play Solo</button>
-  <button id="createGroupBtn" class="modeSelectBtn">Create Group</button>
-  <input id="createGroupPassword" type="password" placeholder="Group password (optional)" autocomplete="off">
-  <!-- No manual "type a code" join anymore - joining is click-a-row-in-
-       the-list or follow-a-link only (local/main.js's refreshGroupList
-       row click / linkedGroup modal). These two still hold the code/
-       password tryJoin() actually reads; they're just never
-       hand-typed into now. -->
-  <input id="joinGroupCode" type="hidden">
-  <input id="joinGroupPassword" type="hidden">
-  <div id="modeSelectStatus"></div>
-  <div class="groupListLabel">Open Groups</div>
-  <div id="groupList">
-    <table id="groupTable">
-      <thead>
-        <tr><th class="groupLockCol"></th><th>Group</th><th>Host</th><th class="groupPlayersCol">Players</th></tr>
-      </thead>
-      <tbody id="groupListRows"><tr class="groupListEmptyRow"><td colspan="4">Loading…</td></tr></tbody>
-    </table>
+
+    <div class="titleActions">
+      <button id="playSoloBtn" class="modeSelectBtn">Play Solo</button>
+      <button id="createGroupBtn" class="modeSelectBtn">Create Group</button>
+      <!-- No manual "type a code" join anymore - joining is click-a-row-in-
+           the-list or follow-a-link only (local/main.js's refreshGroupList
+           row click / linkedGroup modal). These two still hold the code/
+           password tryJoin() actually reads; they're just never
+           hand-typed into now. -->
+      <input id="createGroupPassword" type="password" placeholder="Group password (optional)" autocomplete="off">
+    </div>
+    <input id="joinGroupCode" type="hidden">
+    <input id="joinGroupPassword" type="hidden">
+    <div id="modeSelectStatus"></div>
+
+    <div class="titleSectionLabel">Open groups</div>
+    <div id="groupList">
+      <table id="groupTable">
+        <thead>
+          <tr><th class="groupLockCol"></th><th>Group</th><th>Host</th><th class="groupPlayersCol">Players</th></tr>
+        </thead>
+        <tbody id="groupListRows"><tr class="groupListEmptyRow"><td colspan="4">Loading…</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Shown instead of a full redirect when someone opens a shared
        /group/<code> link (see 404.html + local/main.js's linkedGroup), and
        also reused as the password prompt when clicking a locked row in the
-       Open Groups list below instead of the browser's own prompt() popup -
+       Open Groups list above instead of the browser's own prompt() popup -
        everything above is still loading normally underneath, just
        covered until they either join or dismiss this. -->
   <div id="linkJoinModal" class="hidden">
@@ -287,7 +583,7 @@
         <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
       </div>
       <!-- Leader-only match control - hidden by default, shown by menu.js's renderMatchControls once the roster confirms this client is a leader. -->
-      <div id="matchControls" style="display:none;margin-top:12px;">
+      <div id="matchControls" style="display:none;">
         <h3>Match Control</h3>
         <div class="joinRow">
           <button id="matchStartBtn" class="menuBtn">Start</button>
@@ -297,7 +593,7 @@
           <button id="matchEndBtn" class="menuBtn">End</button>
         </div>
       </div>
-      <div class="groupCodeLine">Group: <code id="groupCodeText">connecting…</code> <button class="menuBtn" id="copyGroupLinkBtn" style="display:none;padding:2px 8px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays" style="color:#7aa2ff">Browse all replays</a></div>
+      <div class="groupCodeLine">Group: <code id="groupCodeText">connecting…</code> <button class="menuBtn" id="copyGroupLinkBtn" style="display:none;padding:4px 10px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays">Browse all replays</a></div>
     </div>
 
     <!-- Leader-only, same gate as #matchControls - see local/controlPanel.js
@@ -332,7 +628,7 @@
 
       <div class="makerRow">
         <h4>Map</h4>
-        <div id="controlMapName" class="fileStatus"></div>
+        <div id="controlMapName" class="fileStatus" style="margin-top:0;"></div>
         <div class="groupListLabel">CTF Maps</div>
         <div class="controlRow" id="controlDefaultMapRow"></div>
         <div class="groupListLabel">Eggball Map</div>
