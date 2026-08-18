@@ -39,7 +39,6 @@ async function start(bootFn) {
 
   simulationEvents.on('frame', cameraController.update);
 
-  rttTracker.start();
   initHud();
   initJoinUI();
   initMenu();
@@ -56,6 +55,17 @@ async function start(bootFn) {
     initKeyboardInput();
 
     await bootFn(); // engine + client physics worlds - already frame-spaced internally
+    // Only safe to start pinging once `socket`/session actually exist -
+    // for the solo build that's not until bootFn() (localTransport.boot)
+    // returns; for a P2P build it's already true well before this point
+    // (createGroup/joinGroup finished on the mode-select screen, before
+    // start() was even called), so this is never too late for either.
+    // Calling this any earlier crashed solo boot outright: rttTracker.
+    // start() pings synchronously, and since start() is an async function,
+    // an uncaught throw from that (session was still null) aborted this
+    // entire function before initHud/initMenu/the render+physics setup
+    // below ever ran.
+    rttTracker.start();
     await nextFrame();
 
     var data = await spriteSheetLoader.fetch();
