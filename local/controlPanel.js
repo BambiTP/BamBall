@@ -73,10 +73,22 @@ function initControlPanel() {
     status.textContent = 'Set ' + key + '.';
   }
 
+  // buildSettingsPanel (client/ui/schemaForm.js) only renders a row for a
+  // key that's actually present in the object it's given - a profile
+  // starts with no keys set at all (nothing customized yet), so without
+  // this every form would render completely empty until something had
+  // already been changed. Defaults first, the profile's own overrides on
+  // top, so every schema field always has a row - onApply below still only
+  // ever sends the ONE key that was actually edited, never this whole
+  // merged object.
+  function displayValuesFor(scope) {
+    var defaults = scope === 'physics' ? (settingsState.physicsDefaults || {}) : (settingsState.matchSettingsDefaults || {});
+    return Object.assign({}, defaults, currentProfileState()[scope]);
+  }
+
   function buildForms() {
-    var profile = currentProfileState();
-    buildSettingsPanel(physRows, 'physics', profile.physics, physTabs, onPhysicsFieldApply);
-    buildSettingsPanel(matchRows, 'match', profile.match, null, onMatchFieldApply);
+    buildSettingsPanel(physRows, 'physics', displayValuesFor('physics'), physTabs, onPhysicsFieldApply);
+    buildSettingsPanel(matchRows, 'match', displayValuesFor('match'), null, onMatchFieldApply);
     renderMapId();
   }
 

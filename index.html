@@ -298,15 +298,19 @@
     border-radius: var(--radius-sm); padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
   }
   #menuSettingsBtn:hover { border-color: var(--accent); background: var(--surface-3); }
-  #menuBody { flex: none; padding: 64px 24px 60px; max-width: 880px; margin: 0 auto; width: 100%; }
+  #menuBody { flex: none; padding: 64px 24px 60px; max-width: 1040px; margin: 0 auto; width: 100%; }
+
+  /* ---- two-column layout: teams on the left, map cards on the right --- */
+  #menuColumns { display: flex; gap: 32px; align-items: flex-start; }
+  #teamsColumn { flex: 1 1 auto; min-width: 0; }
 
   /* ---- map cards --------------------------------------------------- */
-  #mapCards { display: flex; gap: 16px; margin-bottom: 26px; }
+  #mapCards { flex: 0 0 240px; display: flex; flex-direction: column; gap: 16px; }
   .mapCard {
-    flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center;
+    display: flex; flex-direction: column; gap: 10px; align-items: center;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
     padding: 14px; cursor: pointer; transition: border-color 0.15s, transform 0.1s;
-    font: inherit; color: inherit;
+    font: inherit; color: inherit; width: 100%;
   }
   .mapCard:hover { border-color: var(--accent); transform: translateY(-1px); }
   .mapCardThumb {
@@ -315,6 +319,11 @@
   }
   .mapCardThumb img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
   .mapCardLabel { font-size: 13.5px; font-weight: 700; letter-spacing: 0.4px; }
+
+  @media (max-width: 720px) {
+    #menuColumns { flex-direction: column; }
+    #mapCards { width: 100%; }
+  }
 
   /* ---- shared card + button vocabulary used across Teams/Settings ---- */
   .panelCard {
@@ -597,53 +606,57 @@
   <button id="menuSettingsBtn" title="Textures &amp; profile">⚙ Settings</button>
 
   <div id="menuBody">
-    <div id="mapCards">
-      <!-- Thumbnails are just each profile's Fortunate Maps PNG
-           (worker/src/index.js's /api/fortunatemaps/:id/png proxy) shown
-           directly - a flat color-coded image, no tile decode/rendering
-           needed. See local/menu.js's renderMapCards. Editing either
-           card's map/settings opens #profileEditModal. -->
-      <button class="mapCard" id="warmupMapCard" data-profile="pregame">
-        <div class="mapCardThumb"><img id="warmupMapThumb" alt=""></div>
-        <div class="mapCardLabel">Pregame</div>
-      </button>
-      <button class="mapCard" id="gameMapCard" data-profile="game">
-        <div class="mapCardThumb"><img id="gameMapThumb" alt=""></div>
-        <div class="mapCardLabel">Game</div>
-      </button>
-    </div>
+    <div id="menuColumns">
+      <div id="teamsColumn">
+        <div id="joinControls">
+          <div class="joinRow">
+            <button id="joinRedBtn">Join Red Team</button>
+            <button id="joinBlueBtn">Join Blue Team</button>
+            <button id="joinSpectatorBtn">Spectate</button>
+          </div>
+          <div class="joinRow">
+            <button id="joinGameBtn">Join Game</button>
+            <button id="leaveGameBtn">Leave Game</button>
+          </div>
+          <button id="leaveGroupBtn">Leave Group</button>
+        </div>
 
-    <div id="joinControls">
-      <div class="joinRow">
-        <button id="joinRedBtn">Join Red Team</button>
-        <button id="joinBlueBtn">Join Blue Team</button>
-        <button id="joinSpectatorBtn">Spectate</button>
-      </div>
-      <div class="joinRow">
-        <button id="joinGameBtn">Join Game</button>
-        <button id="leaveGameBtn">Leave Game</button>
-      </div>
-      <button id="leaveGroupBtn">Leave Group</button>
-    </div>
+        <div id="teamsGrid">
+          <div class="teamBox" data-team="red"><h3>Red</h3><div class="teamList" id="redTeamList"></div></div>
+          <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
+          <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
+        </div>
 
-    <div id="teamsGrid">
-      <div class="teamBox" data-team="red"><h3>Red</h3><div class="teamList" id="redTeamList"></div></div>
-      <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
-      <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
-    </div>
+        <!-- Leader-only match control - hidden by default, shown by menu.js's renderMatchControls once the roster confirms this client is a leader. -->
+        <div id="matchControls" style="display:none;">
+          <h3>Match Control</h3>
+          <div class="joinRow">
+            <button id="matchStartBtn" class="menuBtn">Start</button>
+            <button id="matchPauseBtn" class="menuBtn">Pause</button>
+            <button id="matchResumeBtn" class="menuBtn">Resume</button>
+            <button id="matchResetBtn" class="menuBtn">Reset</button>
+            <button id="matchEndBtn" class="menuBtn">End</button>
+          </div>
+        </div>
+        <div class="groupCodeLine">Group: <code id="groupCodeText">connecting…</code> <button class="menuBtn" id="copyGroupLinkBtn" style="display:none;padding:4px 10px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays">Browse all replays</a></div>
+      </div>
 
-    <!-- Leader-only match control - hidden by default, shown by menu.js's renderMatchControls once the roster confirms this client is a leader. -->
-    <div id="matchControls" style="display:none;">
-      <h3>Match Control</h3>
-      <div class="joinRow">
-        <button id="matchStartBtn" class="menuBtn">Start</button>
-        <button id="matchPauseBtn" class="menuBtn">Pause</button>
-        <button id="matchResumeBtn" class="menuBtn">Resume</button>
-        <button id="matchResetBtn" class="menuBtn">Reset</button>
-        <button id="matchEndBtn" class="menuBtn">End</button>
+      <div id="mapCards">
+        <!-- Thumbnails are just each profile's Fortunate Maps PNG
+             (worker/src/index.js's /api/fortunatemaps/:id/png proxy) shown
+             directly - a flat color-coded image, no tile decode/rendering
+             needed. See local/menu.js's renderMapCards. Editing either
+             card's map/settings opens #profileEditModal. -->
+        <button class="mapCard" id="warmupMapCard" data-profile="pregame">
+          <div class="mapCardThumb"><img id="warmupMapThumb" alt=""></div>
+          <div class="mapCardLabel">Pregame</div>
+        </button>
+        <button class="mapCard" id="gameMapCard" data-profile="game">
+          <div class="mapCardThumb"><img id="gameMapThumb" alt=""></div>
+          <div class="mapCardLabel">Game</div>
+        </button>
       </div>
     </div>
-    <div class="groupCodeLine">Group: <code id="groupCodeText">connecting…</code> <button class="menuBtn" id="copyGroupLinkBtn" style="display:none;padding:4px 10px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays">Browse all replays</a></div>
   </div>
 </div>
 
