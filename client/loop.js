@@ -20,6 +20,43 @@ var STEP = 1000 / 60;
 // choppier than 60Hz, not smoother, despite the extra frames.
 var renderAlpha = 1;
 
+// Set by local/main.js only when this tab owns the authoritative
+// GameInstance (host or solo - see webrtcTransport.js/localTransport.js's
+// gameInstance()). A pure peer (or a real remote-server client, if this
+// ever talks to one again) leaves this null and gets the ordinary
+// network-driven prediction/reconciliation below, unchanged.
+var authoritativeLocalSource = null;
+function setAuthoritativeLocalSource(fn) { authoritativeLocalSource = fn; }
+
+// Re-anchors the local player's own body to the in-process, authoritative
+// GameInstance instead of trusting this file's independent prediction of
+// it. Host/solo run TWO separate Box2D worlds in the same tab - this one
+// (still needed for every OTHER player, who has no authoritative body to
+// read) and the engine's own - and even given identical input and physics
+// constants, two independently-built Box2D worlds aren't guaranteed to
+// resolve a collision identically (solver/contact order depends on each
+// World's own body list, populated in a different order by each build).
+// Over real network latency that's invisible, normal snapshot correction
+// absorbs it - but for the host (0 ping) it showed up as this file's OWN
+// prediction quietly disagreeing with what this same tab already knows is
+// true, drifting until it crossed entityReconciler's SYNC_SNAP_DISTANCE
+// and then hard-teleporting to catch up - most visible right after a
+// corner hit each simulation resolved slightly differently. Since gi lives
+// in this same process, reading its answer costs nothing; doing it right
+// before this step's own prediction runs bounds any disagreement to a
+// single step (sub-pixel, self-heals next frame) instead of letting two
+// guesses compound into genuinely different trajectories.
+function mirrorAuthoritativeLocalPlayer() {
+  if (!authoritativeLocalSource || game.myId === null) return;
+  var authPlayer = authoritativeLocalSource();
+  if (!authPlayer) return;
+  var me = getPlayer(game.myId);
+  if (!me || !me.body) return;
+  physicsWorld.setPosition(me.body, authPlayer.x, authPlayer.y);
+  physicsWorld.setVelocity(me.body, authPlayer.lx, authPlayer.ly);
+  me.body.SetAngle(authPlayer.a);
+}
+
 function startPhysicsLoop() {
   var lastTime    = engineClock.now();
   var accumulator = 0;
@@ -40,6 +77,7 @@ function startPhysicsLoop() {
         // The server stops ticking entirely while paused; stepping locally
         // would let balls slide on their residual velocity.
         if (settingsState.matchInfo.state !== 'paused') {
+          mirrorAuthoritativeLocalPlayer();
           snapshotRenderOrigins(game.players);
           entityReconciler.applySyncSteps(game.players);
           applyJumps(game.players);

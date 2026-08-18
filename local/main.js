@@ -55,6 +55,20 @@ async function start(bootFn) {
     initKeyboardInput();
 
     await bootFn(); // engine + client physics worlds - already frame-spaced internally
+
+    // Host/solo: this tab owns the authoritative GameInstance itself, so
+    // the local player's own ball can just read its real position every
+    // step instead of trusting a second, independently-stepped Box2D world
+    // to agree with it - see loop.js's mirrorAuthoritativeLocalPlayer for
+    // why that second guess was the actual source of the "corner the
+    // client hits and the server doesn't" mispredictions. A pure peer's
+    // activeTransport.gameInstance() returns null, so this is a no-op for
+    // them and they keep the normal network-latency prediction path.
+    var ownGi = activeTransport && activeTransport.gameInstance ? activeTransport.gameInstance() : null;
+    if (ownGi) {
+      setAuthoritativeLocalSource(function () { return ownGi.gameState.getPlayer(game.myId); });
+    }
+
     // Only safe to start pinging once `socket`/session actually exist -
     // for the solo build that's not until bootFn() (localTransport.boot)
     // returns; for a P2P build it's already true well before this point
