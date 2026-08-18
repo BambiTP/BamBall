@@ -81,7 +81,7 @@ var cameraController = {
       var pos = interpolatedFollowPosition(me);
       // The camera follows your ball exactly as it does in a game room.
       // Zoom is the one difference: an editor room lets you zoom freely
-      // while playing (input/cameraControls.js zoomIsFree), so re-applying
+      // while playing (client/inputs.js zoomIsFree), so re-applying
       // the room's allowed zoom every frame here would undo it instantly.
       var zoom = game.roomKind === 'editor'
         ? renderer.camera.zoom
@@ -93,7 +93,7 @@ var cameraController = {
     }
 
     // Spectating (or not in-game yet): movement keys can pin the camera to
-    // a specific player (input/cameraControls.js spectateFollow) - keep
+    // a specific player (client/inputs.js spectateFollow) - keep
     // tracking them every frame, preserving whatever zoom the spectator
     // has set. Otherwise leave the camera alone (they may be dragging/
     // zooming it freely) - only set an initial position once.

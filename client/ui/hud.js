@@ -1,5 +1,5 @@
 // hud.js - score + match timer. Timer extrapolation logic itself lives in
-// state/settingsState.js (phaseElapsedMs) - this file only formats and
+// client/state.js (phaseElapsedMs) - this file only formats and
 // paints it, on a 250ms interval to stay smooth between matchState packets.
 
 function formatClock(ms) {
@@ -39,10 +39,12 @@ function updateHudScore(scores) {
 // Round-trip time to whoever's authoritative for this session - the host's
 // own local ping is a synchronous loopback (handleOutgoingFor calls
 // dispatch in the same tick, see webrtcTransport.js's hostSocket), so it
-// reads ~0ms; a peer's reflects the real P2P data channel to the host.
+// reads ~0ms; a peer's reflects the real P2P data channel to the host. The
+// EMA smoothing itself lives in client/net.js (also feeds
+// localInputApplier.js's input delay) - this just displays its output.
 function updateHudPing(ms) {
   var el = document.getElementById('hudPing');
-  if (el) el.textContent = ms + ' ms';
+  if (el) el.textContent = Math.round(ms) + ' ms';
 }
 
 var CHAT_LOG_MAX_ROWS = 50; // trims oldest rows so a long match's chat can't grow the DOM forever
@@ -67,21 +69,13 @@ function appendChatMessage(name, text) {
   log.scrollTop = log.scrollHeight;
 }
 
-var PING_INTERVAL_MS = 2000;
-
 function initHud() {
   appEvents.on('score:changed', updateHudScore);
   appEvents.on('chat:message', appendChatMessage);
-  appEvents.on('ping:measured', updateHudPing);
+  appEvents.on('rtt:updated', updateHudPing);
   settingsEvents.on('matchInfo:changed', function () {
     updateHudScore(settingsState.matchInfo.scores || { red: 0, blue: 0 });
     renderHudTimer();
   });
   setInterval(renderHudTimer, 250);
-
-  // actions.ping()'s reply is packetApplier.js's 'pong' handler, which is
-  // what emits 'ping:measured' above - nothing sent this before now, so
-  // the packet round trip existed but no ping was ever actually measured.
-  actions.ping();
-  setInterval(actions.ping, PING_INTERVAL_MS);
 }

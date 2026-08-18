@@ -7,32 +7,14 @@
 // tileOverrides` inline) - this is the only state/ dependency this module
 // has, and it never writes back into state/ itself.
 
-var physConfig = {
-  gravityX: 0,
-  gravityY: 0,
-
-  radius:         0.475,
-  density:        1,      // TagPro server fixture: { density: 1 }
-  friction:       0.5,
-  restitution:    0.2,
-  linearDamping:  0.5,
-  angularDamping: 0.5,
-  playerFriction: 0.5,
-
-  accel:    0.0625,
-  maxSpeed: 6.25,
-
-  wallRestitution: 0,
-  wallFriction:    0.2,
-
-  floorFriction: 0,
-
-  jumpStrength: 7.5,
-  jumpCharges:  1,
-
-  cameraZoom:     1,
-  allowWheelZoom: false,
-};
+// Seeded from engine/gameConfig.js (loaded before this file - see
+// index.html's script order) instead of a hand-copied literal, so
+// prediction's defaults can't silently drift from the server's the way a
+// duplicated object would (exactly the class of bug movement.js's own
+// header comment warns about). Live leader changes still land the same way
+// they always did: stateWiring.js's physicsChanged handler does
+// Object.assign(physConfig, settings) on top of this.
+var physConfig = Object.assign({}, gameConfig);
 
 var WALL_PHYSICS_DATA = [
   { id: 1,   name: 'Wall', type: 'square', size: 40 },
@@ -48,7 +30,6 @@ var b2BodyDef      = Box2D.Dynamics.b2BodyDef;
 var b2Body         = Box2D.Dynamics.b2Body;
 var b2FixtureDef   = Box2D.Dynamics.b2FixtureDef;
 var b2CircleShape  = Box2D.Collision.Shapes.b2CircleShape;
-var b2PolygonShape = Box2D.Collision.Shapes.b2PolygonShape;
 
 class PhysicsWorld {
   constructor() {
@@ -79,11 +60,6 @@ class PhysicsWorld {
     this.world.SetGravity(new b2Vec2(x, y));
   }
 
-  step(timeStep) {
-    this.world.Step(timeStep, 8, 3);
-    this.world.ClearForces();
-  }
-
   // The cell's effective wall surface: settingsState's per-tile override
   // when the leader set one, else the room-wide physConfig value - mirrors
   // the server's matchManager.syncWallSurface fallback so prediction
@@ -108,16 +84,7 @@ class PhysicsWorld {
     body.SetUserData({ isWall: true });
 
     var fixDef = new b2FixtureDef();
-
-    if (tileData.type === 'vector') {
-      var shape = new b2PolygonShape();
-      shape.SetAsArray(tileData.vectors.map(function (v) { return new b2Vec2(v.x, v.y); }));
-      fixDef.shape = shape;
-    } else {
-      var boxShape = new b2PolygonShape();
-      boxShape.SetAsBox(tileData.size / 2 / 40, tileData.size / 2 / 40);
-      fixDef.shape = boxShape;
-    }
+    fixDef.shape = buildShapeFromTileData(tileData, 40);
 
     var surface = this.wallSurfaceAt(x, y);
     fixDef.restitution = surface.restitution;
@@ -138,17 +105,6 @@ class PhysicsWorld {
         f.SetRestitution(surface.restitution);
         f.SetFriction(surface.friction);
       }
-    }
-  }
-
-  setDamping(body, linear, angular) {
-    body.SetLinearDamping(linear);
-    body.SetAngularDamping(angular);
-  }
-
-  setFriction(body, value) {
-    for (var f = body.GetFixtureList(); f; f = f.GetNext()) {
-      f.SetFriction(value);
     }
   }
 
@@ -220,48 +176,8 @@ class PhysicsWorld {
 
     return body;
   }
-
-  destroyBody(body) {
-    if (body) this.world.DestroyBody(body);
-  }
-
-  getPosition(body) {
-    var pos = body.GetPosition();
-    return { x: pos.x, y: pos.y };
-  }
-
-  getVelocity(body) {
-    var vel = body.GetLinearVelocity();
-    return { x: vel.x, y: vel.y };
-  }
-
-  setVelocity(body, x, y) {
-    body.SetLinearVelocity(new b2Vec2(x, y));
-  }
-
-  setPosition(body, x, y) {
-    body.SetPosition(new b2Vec2(x, y));
-  }
-
-  applyForce(body, x, y) {
-    body.ApplyForce(new b2Vec2(x, y), body.GetWorldCenter());
-  }
-
-  getMass(body) {
-    return body.GetMass();
-  }
-
-  getAngle(body) {
-    return body.GetAngle();
-  }
-
-  // Mirrors the server's physicsWorld.setSensor - a dead player's ball must
-  // stop colliding locally too, or remote clients look pushable while dead.
-  setSensor(body, bool) {
-    for (var f = body.GetFixtureList(); f; f = f.GetNext()) {
-      f.SetSensor(bool);
-    }
-  }
 }
+
+Object.assign(PhysicsWorld.prototype, Box2DBody);
 
 var physicsWorld = new PhysicsWorld();

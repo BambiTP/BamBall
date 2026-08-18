@@ -77,6 +77,7 @@ const packetBuilders = {
       },
       playerKeys: matchManager.getPlayerKeys(),
       tileKeys:   matchManager.getTileKeys(),
+      profiles:   matchManager.getProfiles(),
       tileCategories: tileCategoriesOf(room.instance.physicsLookup),
       // Only players who actually have an override are worth sending - most
       // rooms never touch this, and a (re)connecting client needs to know
@@ -170,6 +171,13 @@ const packetBuilders = {
     return { type: 'saveStatesChanged', names };
   },
 
+  // profiles: { pregame: {physics,match,mapId}, game: {physics,match,mapId} }
+  // - matchManager's getProfiles(), full buckets so the Esc menu's map
+  // cards/forms can show what's actually configured.
+  profilesChanged(profiles) {
+    return { type: 'profilesChanged', profiles };
+  },
+
   // settings here is sparse (only PLAYER_KEYS the leader has explicitly
   // overridden for this one player) - the client already knows the
   // room-wide defaults from physicsChanged and computes the effective
@@ -183,22 +191,6 @@ const packetBuilders = {
   // explicitly overridden keys, empty object means "back to all defaults".
   tileSettingsChanged(x, y, settings) {
     return { type: 'tileSettingsChanged', x, y, settings };
-  },
-
-  // Paint mode (DO-NEXT-014). target is 'map' or { x, y } (a per-tile
-  // overlay). seq is the sender's opaque token, echoed so it can
-  // recognize its own already-drawn stroke; null for everyone-else
-  // semantics is fine, they just draw it.
-  overlayStroke(target, stroke, seq) {
-    return { type: 'overlayStroke', target, stroke, seq };
-  },
-
-  overlayUndo(target) {
-    return { type: 'overlayUndo', target };
-  },
-
-  overlayClear(target) {
-    return { type: 'overlayClear', target };
   },
 
   chat(data) {

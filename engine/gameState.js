@@ -52,22 +52,6 @@ class GameState {
     // (leaderManager.setTiles). gameHelpers.tileSetting is the read path.
     this.tileOverrides = {}; // "x,y" -> { boostCooldown: 5000, ... }
 
-    // Paint mode (DO-NEXT-014): the full-map drawing overlay's stroke
-    // log. Purely visual - never touches physics or behavior. Each
-    // stroke is { points: [[px,py],...], color: '#rrggbb', size } in
-    // overlay-pixel coordinates (shared/overlayCoords.js owns the
-    // resolution rule). Map state like tileOverrides: survives match
-    // resets, cleared by loadMap, capped by leaderManager.
-    this.mapOverlayStrokes = [];
-
-    // Per-tile drawing overlays (stage 2), sparse: "x,y" -> stroke list
-    // in that cell's own 40x40 pixel space (OverlayCoords.TILE_PIXELS).
-    // Cell decoration, not tile decoration - deliberately NOT cleared
-    // when the cell is repainted (unlike tileOverrides), and drawn on
-    // top of whatever tile sprite is there, so a future texture-pack
-    // system underneath stays compatible.
-    this.tileOverlayStrokes = {};
-
     // Eggball mode's one projectile (engine/eggballLogic.js). carrierId set
     // means a player is holding it (its position is just that player's
     // position - the client renders it there, nothing here tracks a

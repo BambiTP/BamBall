@@ -1,5 +1,5 @@
 // joinUI.js - Join Red Team / Join Blue Team / Join Game / Leave Game /
-// Leave Group. Reuses client/game/app/actions.js unchanged - localTransport.js's
+// Leave Group. Reuses client/app.js unchanged - localTransport.js's
 // `socket` shim is what makes that work with no server.
 
 // fireInput.js's ball-click-to-open-settings path is leader-only - this
@@ -29,6 +29,7 @@ function enableJoinUI() {
 function refreshJoinUI() {
   var redBtn   = document.getElementById('joinRedBtn');
   var blueBtn  = document.getElementById('joinBlueBtn');
+  var specBtn  = document.getElementById('joinSpectatorBtn');
   var gameBtn  = document.getElementById('joinGameBtn');
   var leaveBtn = document.getElementById('leaveGameBtn');
 
@@ -37,11 +38,13 @@ function refreshJoinUI() {
 
   redBtn.disabled   = !joinUIReady;
   blueBtn.disabled  = !joinUIReady;
+  specBtn.disabled  = !joinUIReady || team === 'spectator';
   gameBtn.disabled  = !joinUIReady || inGame || (team !== 'red' && team !== 'blue');
   leaveBtn.disabled = !joinUIReady || !inGame;
 
   redBtn.classList.toggle('active', team === 'red');
   blueBtn.classList.toggle('active', team === 'blue');
+  specBtn.classList.toggle('active', team === 'spectator');
 }
 
 function initJoinUI() {
@@ -52,6 +55,10 @@ function initJoinUI() {
   document.getElementById('joinBlueBtn').addEventListener('click', function () {
     if (!joinUIReady) return;
     actions.joinTeam('blue');
+  });
+  document.getElementById('joinSpectatorBtn').addEventListener('click', function () {
+    if (!joinUIReady) return;
+    actions.joinTeam('spectator');
   });
   document.getElementById('joinGameBtn').addEventListener('click', function () {
     if (!joinUIReady) return;

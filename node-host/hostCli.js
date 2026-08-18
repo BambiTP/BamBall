@@ -1,29 +1,14 @@
 #!/usr/bin/env node
 // hostCli.js - headless, terminal-controlled P2P host. Runs the exact same
 // authoritative engine/ code the browser host (local/webrtcTransport.js)
-// does - engine/ and shared/ are already isomorphic (every file there does
-// `(typeof require === 'function') ? require(...) : globalThis....`), so
-// this just requires them directly instead of loading them as <script>
-// tags. No PIXI, no DOM, no rendering at all: this process's only job is
-// running the authoritative simulation and relaying packets, exactly what
-// a browser host already does apart from also drawing its own screen.
-//
-// Deliberately mirrors webrtcTransport.js's HOST role closely (same
-// EVENT_MAP, same handleOutgoingFor switch, same packet shapes) rather
-// than reimplementing it from scratch - the goal is behavioral parity
-// with the real host, not a from-scratch redesign. Differences from the
-// browser host:
-//   - No local player: this process is a pure dedicated host, nobody
-//     plays FROM the terminal. (Could be added later - hostSocket's shape
-//     already isolates where that would plug in.)
-//   - No replay recording: local/localReplayRecorder.js wasn't audited
-//     for Node-compatibility (CompressionStream/Blob assumptions) - out
-//     of scope for a first pass. Replays from THIS host won't get saved
-//     anywhere; matches still work fully otherwise.
-//   - Signaling/WebRTC use the `ws` and `@roamhq/wrtc` packages instead
-//     of the browser's native WebSocket/RTCPeerConnection - same wire
-//     protocol either way, so the Worker (worker/src/roomSignal.js) and
-//     any browser peer can't tell the difference.
+// does, and drives it through the exact same local/hostSession.js every
+// browser host uses - the only real differences from a browser host are
+// this file's own concerns: no local player (nobody plays FROM the
+// terminal), no replay recording (local/localReplayRecorder.js wasn't
+// audited for Node-compatibility), Node's `ws`/`@roamhq/wrtc` in place of
+// the browser's native WebSocket/RTCPeerConnection (same wire protocol
+// either way - the Worker and any browser peer can't tell the difference),
+// and terminal I/O instead of a rendered page.
 
 const WebSocket = require('ws');
 const wrtc = require('@roamhq/wrtc');
@@ -33,8 +18,7 @@ const fs = require('fs');
 
 const GameInstance = require('../engine/gameInstance.js');
 const gameConfig = require('../engine/gameConfig.js');
-const { packetBuilders, serializePlayer } = require('../engine/packetBuilders.js');
-const TagproAuth = require('../local/tagproAuthLib.js');
+const HostSession = require('../local/hostSession.js');
 const { importFortunateMap } = require('./fortunateMapsImport.js');
 
 const WORKER_URL = 'https://api.bamball.workers.dev';
@@ -57,536 +41,79 @@ function parseArgs() {
 }
 var args = parseArgs();
 
-// ---- state (mirrors webrtcTransport.js's host-side state) ------------
 var gi = null;
+var session = null;
 var roomCode = null;
-var signalWs = null;
-var myPeerId = 'p' + Math.random().toString(36).slice(2, 10);
-var nextClientId = 1; // no local player reserving id 1 here, unlike the browser host
-var peers = {}; // signalPeerId -> { pc, dc, clientId, client, account, ready }
 
-function mapDataFrom(gameState) {
-  return {
-    map: gameState.map,
-    wallMap: gameState.wallMap,
-    wells: gameState.wells,
-    mapId: gameState.mapId,
-    mapSource: gameState.mapSource,
-    mapName: gameState.mapName,
-    mapAuthor: gameState.mapAuthor,
-    switches: gameState.switches,
-    portals: gameState.portals,
-    tileOverrides: gameState.tileOverrides,
-    spawnPoints: gameState.spawnPoints,
-    mapOverlayStrokes: gameState.mapOverlayStrokes,
-    tileOverlayStrokes: gameState.tileOverlayStrokes,
-  };
-}
-
-// ws's message event .data is a Buffer by default even through
-// addEventListener - JSON.parse needs a string.
-function parseMessage(raw) {
-  return JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
-}
-
-// ---- signaling ---------------------------------------------------------
-
-function requestRoomCode() {
-  return fetch(WORKER_URL + '/api/groups', { method: 'POST' })
-    .then(function (res) { return res.json(); })
-    .then(function (data) {
-      roomCode = data.code || null;
-      return roomCode;
-    });
-}
-
-function connectSignal(code, password, name) {
-  var url = SIGNAL_URL + code + '?peerId=' + myPeerId + '&role=host'
-    + (password ? '&password=' + encodeURIComponent(password) : '')
-    + '&name=' + encodeURIComponent(name);
-  signalWs = new WebSocket(url);
-
-  return new Promise(function (resolve, reject) {
-    signalWs.addEventListener('message', function onMessage(event) {
-      var msg = parseMessage(event.data);
-      if (msg.type === 'welcome') {
-        signalWs.removeEventListener('message', onMessage);
-        resolve(msg);
-      }
-    });
-    signalWs.addEventListener('close', function (event) {
-      if (event.code !== 1000) reject(new Error(event.reason || 'signaling connection closed (code ' + event.code + ')'));
-    });
-    signalWs.addEventListener('error', function (event) { reject(new Error('signaling connection failed: ' + (event.message || event))); });
-  }).then(function (welcome) {
-    signalWs.addEventListener('message', function (event) {
-      var msg = parseMessage(event.data);
-      if (msg.type === 'signal') handleSignalMessage(msg.from, msg.data);
-      else if (msg.type === 'peer-joined') handlePeerJoined(msg.peerId);
-      else if (msg.type === 'peer-left') handlePeerLeft(msg.peerId);
-    });
-    return welcome;
-  });
-}
-
-function sendSignal(toPeerId, data) {
-  signalWs.send(JSON.stringify({ type: 'signal', to: toPeerId, data: data }));
-}
-
-function handleSignalMessage(fromPeerId, data) {
-  var entry = peers[fromPeerId];
-  if (!entry) return; // shouldn't happen - entry is created on peer-joined before any signal arrives
-  if (data.candidate) entry.pc.addIceCandidate(data.candidate).catch(function () {});
-  else if (data.type === 'answer') entry.pc.setRemoteDescription(data).catch(function () {});
-}
-
-function handlePeerLeft(peerId) {
-  var entry = peers[peerId];
-  if (!entry) return;
-  if (entry.pc) entry.pc.close();
-  if (entry.ready) {
-    var player = gi.gameState.getPlayer(entry.clientId);
-    if (player) gi.gameHelpers.removePlayer(entry.clientId);
-  }
-  log('player left: ' + describeEntry(entry));
-  delete peers[peerId];
-  broadcastRoster();
-}
-
-// ---- moderation ----------------------------------------------------------
-//
-// No LOCAL_CLIENT_ID/mainLeader concept here (unlike webrtcTransport.js's
-// browser host) - this process has no local player at all, so "who's
-// ultimately in charge" is just whoever has terminal access, not a
-// connected client. The REPL commands below (promote/demote/kick/ban/mute)
-// act directly with no permission check for that reason; isLeader() only
-// gates packets arriving FROM connected peers.
-
-function findPeerEntry(clientId) {
-  for (var id in peers) {
-    if (peers[id].clientId === clientId) return { peerId: id, entry: peers[id] };
-  }
-  return null;
-}
-
-function isLeader(clientId) {
-  var found = findPeerEntry(clientId);
-  return !!(found && found.entry.client.leader);
-}
-
-// Everyone connected, including spectators who never spawned - mirrors
-// webrtcTransport.js's buildRoster/roomState. mainLeader is never true for
-// anyone here (see header comment above).
-function buildRoster() {
-  var list = [];
-  for (var id in peers) {
-    var entry = peers[id];
-    if (!entry.ready) continue;
-    list.push({
-      id: entry.clientId, name: entry.account.display_name, team: entry.client.team,
-      inGame: !!gi.gameState.getPlayer(entry.clientId),
-      leader: !!entry.client.leader, mainLeader: false,
-      muted: !!entry.client.muted, authed: !!entry.account.authed,
-    });
-  }
-  return list;
-}
-
-function broadcastRoster() {
-  broadcastToPeers(packetBuilders.roomState(buildRoster()));
-}
-
-function kickClient(clientId) {
-  var found = findPeerEntry(clientId);
-  if (!found) return false;
-  safeSend(found.entry, { type: 'kicked', message: 'You have been kicked from this room.' });
-  setTimeout(function () { handlePeerLeft(found.peerId); }, 300);
-  return true;
-}
-
-function banClient(clientId) {
-  var found = findPeerEntry(clientId);
-  if (!found) return false;
-  safeSend(found.entry, { type: 'kicked', message: 'You have been banned from this room.' });
-  signalWs.send(JSON.stringify({ type: 'ban', peerId: found.peerId }));
-  setTimeout(function () { handlePeerLeft(found.peerId); }, 300);
-  return true;
-}
-
-function setMuted(clientId, muted) {
-  var found = findPeerEntry(clientId);
-  if (!found) return false;
-  found.entry.client.muted = !!muted;
-  broadcastRoster();
-  return true;
-}
-
-function promoteToLeader(clientId) {
-  var found = findPeerEntry(clientId);
-  if (!found) return false;
-  found.entry.client.leader = true;
-  broadcastRoster();
-  return true;
-}
-
-function demoteFromLeader(clientId) {
-  var found = findPeerEntry(clientId);
-  if (!found) return false;
-  found.entry.client.leader = false;
-  broadcastRoster();
-  return true;
-}
-
-// ---- WebRTC peer connections --------------------------------------------
-
-function handlePeerJoined(peerId) {
-  var clientId = ++nextClientId;
-  var pc = new wrtc.RTCPeerConnection({ iceServers: ICE_SERVERS });
-  // lastSeenMs backs the stale-connection sweep (see startStalePeerCheck) -
-  // a WebRTC data channel has no reliable prompt "the other end is gone"
-  // signal on a real network drop (not a clean close), so this catches a
-  // "ghost" peer that looks connected but isn't actually there anymore.
-  var entry = {
-    pc: pc, dc: null, clientId: clientId,
-    client: { id: clientId, team: 'spectator', muted: false, leader: false },
-    account: { display_name: 'Player ' + clientId, authed: false },
-    ready: false, lastSeenMs: Date.now(),
-  };
-  peers[peerId] = entry;
-
-  pc.addEventListener('icecandidate', function (event) {
-    if (event.candidate) sendSignal(peerId, { candidate: event.candidate });
-  });
-
-  var dc = pc.createDataChannel('game', { ordered: true });
-  entry.dc = dc;
-  wireHostDataChannel(peerId, entry);
-
-  pc.createOffer().then(function (offer) {
-    return pc.setLocalDescription(offer).then(function () { sendSignal(peerId, offer); });
-  }).catch(function (err) { log('offer failed for ' + peerId + ': ' + err.message); });
-}
-
-function wireHostDataChannel(peerId, entry) {
-  entry.dc.addEventListener('open', function () {
-    entry.ready = true;
-    var room = { instance: gi, kind: 'game', leaderId: 0 };
-    var joinedPacket = packetBuilders.joined(room, entry.client, entry.account, mapDataFrom(gi.gameState));
-    entry.dc.send(JSON.stringify(joinedPacket));
-    log('player joined: ' + describeEntry(entry));
-    broadcastRoster();
-  });
-  entry.dc.addEventListener('message', function (event) {
-    entry.lastSeenMs = Date.now();
-    var packet = parseMessage(event.data);
-    handleOutgoingFor(entry.clientId, entry, packet);
-  });
-  entry.dc.addEventListener('close', function () { handlePeerLeft(peerId); });
-}
-
-// Every ready peer sends a 'ping' every couple of seconds regardless of
-// player input (client/ui/hud.js's own RTT probe), so "anything at all
-// heard recently" is a reliable liveness signal. STALE_TIMEOUT_MS is
-// generous versus that ~2s cadence - a few missed beats, not a hair
-// trigger - so a slow tick or one dropped packet doesn't falsely kick
-// someone.
-var STALE_TIMEOUT_MS = 10000;
-var STALE_CHECK_INTERVAL_MS = 3000;
-
-function startStalePeerCheck() {
-  setInterval(function () {
-    var now = Date.now();
-    for (var id in peers) {
-      var entry = peers[id];
-      if (entry.ready && now - entry.lastSeenMs > STALE_TIMEOUT_MS) {
-        log('peer ' + id + ' (clientId ' + entry.clientId + ') timed out - no message in ' + STALE_TIMEOUT_MS + 'ms');
-        if (entry.pc) entry.pc.close();
-        handlePeerLeft(id);
-      }
-    }
-  }, STALE_CHECK_INTERVAL_MS);
-}
-
-function safeSend(entry, packet) {
-  if (!entry.ready || entry.dc.readyState !== 'open') return;
-  try { entry.dc.send(JSON.stringify(packet)); } catch (e) { /* dropped, peer-left will clean up */ }
-}
-
-function broadcastToPeers(packet) {
-  for (var id in peers) safeSend(peers[id], packet);
-}
-
-function broadcastToOne(clientId, packet) {
-  for (var id in peers) {
-    if (peers[id].clientId === clientId) safeSend(peers[id], packet);
-  }
-}
-
-// ---- engine events -> packets (same table as webrtcTransport.js, minus
-// the local-player packetRouter.dispatch/recorder calls this build has
-// neither of) ------------------------------------------------------------
-
-var EVENT_MAP = {
-  score:                packetBuilders.score,
-  setTile:               packetBuilders.setTile,
-  connectionsChanged:    packetBuilders.connections,
-  spawnPointsChanged:    packetBuilders.spawnPoints,
-  capture:               packetBuilders.capture,
-  eggballChanged:        packetBuilders.eggballChanged,
-  physicsChanged:        packetBuilders.physicsChanged,
-  playerPhysicsChanged:  packetBuilders.playerPhysicsChanged,
-  tileSettingsChanged:   packetBuilders.tileSettingsChanged,
-  saveStatesChanged:     packetBuilders.saveStatesChanged,
-  overlayStroke:         packetBuilders.overlayStroke,
-  overlayUndo:           packetBuilders.overlayUndo,
-  overlayClear:          packetBuilders.overlayClear,
-  matchEnd:               packetBuilders.matchEnd,
-  powerupPreview:        packetBuilders.powerupPreview,
-  chat:                   packetBuilders.chat,
-};
-
-function wireHostEngineEvents() {
-  Object.keys(EVENT_MAP).forEach(function (event) {
-    var builder = EVENT_MAP[event];
-    gi.emitter.on(event, function () {
-      broadcastToPeers(builder.apply(null, arguments));
-    });
-  });
-
-  gi.emitter.on('matchStateChanged', function () {
-    broadcastToPeers(packetBuilders.matchState(gi.gameState));
-    log('match state: ' + gi.gameState.state);
-
-    if (gi.gameState.state === 'countdown') {
-      for (var id in peers) {
-        var entry = peers[id];
-        if (entry.ready && !gi.gameState.getPlayer(entry.clientId) && (entry.client.team === 'red' || entry.client.team === 'blue')) {
-          joinGameFor(entry.clientId, entry.client, entry.account);
-        }
-      }
-    }
-  });
-
-  gi.emitter.on('powerupCollected', function (playerId, key, timerMs) {
-    var packet = packetBuilders.powerupCollected(key, timerMs);
-    broadcastToOne(playerId, packet);
-  });
-
-  gi.emitter.on('snapshot', function (deltas, immediate) {
-    for (var id in peers) {
-      var entry = peers[id];
-      var delta = deltas.get(entry.clientId);
-      if (delta) safeSend(entry, packetBuilders.snapshot(delta, immediate));
-    }
-  });
-  // replayPlayers ignored - no recorder in this build, see header comment.
-  gi.emitter.on('replayPlayers', function () {});
-}
-
-function setTeamFor(clientId, clientRec, accountRec, team, dispatch) {
-  var previousTeam = clientRec.team;
-  clientRec.team = team;
-  dispatch({ type: 'team', team: team });
-  broadcastRoster();
-
-  if (team === previousTeam) return;
-  var player = gi.gameState.getPlayer(clientId);
-  if (player) {
-    gi.gameHelpers.removePlayer(clientId);
-    dispatch({ type: 'leftGame' });
-    if (team === 'red' || team === 'blue') {
-      var respawned = gi.gameHelpers.spawnPlayer(clientId, team, accountRec.display_name, accountRec.authed);
-      dispatch({ type: 'joinedGame', player: serializePlayer(respawned) });
-    }
-    broadcastRoster();
-  }
-}
-
-function joinGameFor(clientId, clientRec, accountRec) {
-  if (gi.gameState.getPlayer(clientId)) return;
-  if (clientRec.team !== 'red' && clientRec.team !== 'blue') return;
-  var player = gi.gameHelpers.spawnPlayer(clientId, clientRec.team, accountRec.display_name, accountRec.authed);
-  broadcastToOne(clientId, { type: 'joinedGame', player: serializePlayer(player) });
-  broadcastRoster();
-  if (gi.gameState.state === 'pregame') gi.matchManager.startMatch();
-}
-
-function verifyTagproToken(tagpro) {
-  return TagproAuth.verifyToken(WORKER_URL, tagpro);
-}
-
-function handleOutgoingFor(clientId, entry, packet) {
-  var clientRec = entry.client;
-  var accountRec = entry.account;
-  var dispatch = function (p) { safeSend(entry, p); };
-
-  switch (packet.type) {
-    case 'join_red':       return setTeamFor(clientId, clientRec, accountRec, 'red', dispatch);
-    case 'join_blue':      return setTeamFor(clientId, clientRec, accountRec, 'blue', dispatch);
-    case 'join_spectator': return setTeamFor(clientId, clientRec, accountRec, 'spectator', dispatch);
-    case 'join_game':      return joinGameFor(clientId, clientRec, accountRec);
-    case 'leave_game': {
-      var player = gi.gameState.getPlayer(clientId);
-      if (!player) { dispatch({ type: 'error', message: 'not currently in the game' }); return; }
-      gi.gameHelpers.removePlayer(clientId);
-      dispatch({ type: 'leftGame' });
-      return;
-    }
-    case 'input': {
-      var p = gi.gameState.getPlayer(clientId);
-      if (!p) return;
-      p.left = !!packet.left; p.right = !!packet.right; p.up = !!packet.up; p.down = !!packet.down;
-      return;
-    }
-    case 'ping': return dispatch({ type: 'pong', t: packet.t });
-    case 'detonateBomb': {
-      var pl = gi.gameState.getPlayer(clientId);
-      if (!pl || pl.dead || pl.frozen || pl.matchFrozen) return;
-      var affected = gi.gameHelpers.detonateRollingBomb(pl);
-      if (affected) gi.emitter.emit('update', affected);
-      return;
-    }
-    case 'throwEgg': {
-      var throwPl = gi.gameState.getPlayer(clientId);
-      if (!throwPl || throwPl.dead || throwPl.frozen || throwPl.matchFrozen) return;
-      gi.gameHelpers.throwEggball(throwPl, Number(packet.dirX) || 0, Number(packet.dirY) || 0);
-      return;
-    }
-    case 'chat': {
-      if (clientRec.muted) { dispatch({ type: 'error', message: 'You are muted in this room.' }); return; }
-      var text = typeof packet.text === 'string' ? packet.text.trim().slice(0, 240) : '';
-      if (!text) return;
-      log('chat <' + accountRec.display_name + '> ' + text);
-      broadcastToPeers(packetBuilders.chat({ id: clientId, name: accountRec.display_name, text: text }));
-      return;
-    }
-    case 'identify': {
-      if (typeof packet.name === 'string' && packet.name.trim()) {
-        accountRec.display_name = packet.name.trim().slice(0, 20);
-      }
-      broadcastRoster();
-      if (packet.tagpro && packet.tagpro.token) {
-        verifyTagproToken(packet.tagpro).then(function (valid) {
-          if (!valid) return;
-          accountRec.authed = true;
-          accountRec.display_name = packet.tagpro.reservedName;
-          var p = gi.gameState.getPlayer(clientId);
-          if (p) { p.authed = true; gi.emitter.emit('update', p); }
-          broadcastRoster();
-        });
-      }
-      return;
-    }
-
-    // ---- leader-gated moderation + match control ----------------------
-    // See isLeader()'s header comment: promote/demote/kick/ban/mute are
-    // also available unchecked from the REPL (printHelp, below) for
-    // whoever has terminal access - these packet cases are what makes the
-    // SAME actions reachable from a connected leader's own browser UI.
-    case 'kick_player': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can kick players' }); return; }
-      kickClient(packet.targetId);
-      return;
-    }
-    case 'ban_player': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can ban players' }); return; }
-      banClient(packet.targetId);
-      return;
-    }
-    case 'mute_player': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can mute players' }); return; }
-      setMuted(packet.targetId, !!packet.muted);
-      return;
-    }
-    case 'promote_leader': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can promote players' }); return; }
-      promoteToLeader(packet.targetId);
-      return;
-    }
-    case 'demote_leader': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can demote players' }); return; }
-      demoteFromLeader(packet.targetId);
-      return;
-    }
-    case 'start_match':  { if (isLeader(clientId)) gi.matchManager.startMatch();  return; }
-    case 'pause_match':  { if (isLeader(clientId)) gi.matchManager.pauseMatch();  return; }
-    case 'resume_match': { if (isLeader(clientId)) gi.matchManager.resumeMatch(); return; }
-    case 'reset_game':   { if (isLeader(clientId)) gi.matchManager.resetMatch();  return; }
-    case 'end_match':    { if (isLeader(clientId)) gi.matchManager.endMatch('leaderEnded'); return; }
-
-    // ---- leader-gated settings edits --------------------------------
-    // matchManager mutates config/gameState directly and emits its own
-    // 'physicsChanged' / 'matchStateChanged' / etc - EVENT_MAP above already
-    // turns those into broadcasts, so nothing here sends a packet itself.
-    case 'update_physics': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change physics settings' }); return; }
-      gi.matchManager.updatePhysics(packet.settings);
-      return;
-    }
-    case 'update_player_physics': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change player settings' }); return; }
-      var targetPlayer = gi.gameState.getPlayer(packet.targetId);
-      if (!targetPlayer) return;
-      gi.matchManager.updatePlayerPhysics(targetPlayer, packet.settings);
-      return;
-    }
-    case 'update_settings': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change match settings' }); return; }
-      gi.matchManager.updateSettings(packet.settings);
-      return;
-    }
-    case 'update_tile_settings': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change tile settings' }); return; }
-      gi.matchManager.updateTileSettings(packet.x, packet.y, packet.settings);
-      return;
-    }
-    case 'changeMap': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can change the map' }); return; }
-      switchMap(packet.mapId);
-      return;
-    }
-    case 'save_state': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can save game states' }); return; }
-      gi.matchManager.captureSaveState(packet.name);
-      return;
-    }
-    case 'load_state': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can load game states' }); return; }
-      if (!gi.matchManager.restoreSaveState(packet.name)) dispatch({ type: 'error', message: 'no save state named "' + packet.name + '"' });
-      return;
-    }
-    case 'delete_state': {
-      if (!isLeader(clientId)) { dispatch({ type: 'error', message: 'only a leader can delete game states' }); return; }
-      gi.matchManager.deleteSaveState(packet.name);
-      return;
-    }
-
-    default: return;
-  }
-}
-
-// ---- boot ----------------------------------------------------------------
+function log(msg) { console.log('[host] ' + msg); }
 
 function loadMapDoc(mapFile) {
   var raw = fs.readFileSync(path.join(MAPS_DIR, mapFile), 'utf8');
   return JSON.parse(raw);
 }
 
+// mapArg is either a bundled file under assets/maps/ (the REPL's own
+// `map <file>` command and --map= boot flag - local admin convenience,
+// unrelated to what a leader can do) or a bare Fortunate Maps id (what a
+// connected browser leader's Settings tab always sends - see
+// local/controlPanel.js / local/fortunateMapsImport.js, and hostSession.js's
+// 'changeMap' case below via resolveMap).
+async function resolveMapArg(mapArg) {
+  var isFortunateId = /^\d+$/.test(mapArg);
+  var mapDoc = isFortunateId ? await importFortunateMap(WORKER_URL, mapArg) : loadMapDoc(mapArg);
+  return { mapDoc: mapDoc, mapMeta: isFortunateId ? { type: 'fortunatemaps', id: mapArg } : null };
+}
+
+// A packet-driven changeMap's mapId is always a bare Fortunate Maps id
+// (numeric) - never a bundled filename, which only the terminal itself can
+// reach.
+function resolveMap(mapId) {
+  return importFortunateMap(WORKER_URL, mapId).then(function (mapDoc) {
+    return { mapDoc: mapDoc, mapMeta: { type: 'fortunatemaps', id: String(mapId) } };
+  });
+}
+
+async function switchMap(mapArg) {
+  try {
+    var resolved = await resolveMapArg(mapArg);
+  } catch (e) {
+    log('could not load ' + mapArg + ': ' + e.message);
+    return;
+  }
+  session.switchMap(resolved.mapDoc, resolved.mapMeta);
+  log('switched to ' + gi.gameState.mapName);
+}
+
+// ---- boot ----------------------------------------------------------------
+
 async function boot() {
+  gi = new GameInstance(gameConfig, 'game');
+  session = HostSession.createHostSession(gi, {
+    RTCPeerConnection: wrtc.RTCPeerConnection,
+    WebSocket: WebSocket,
+    iceServers: ICE_SERVERS,
+    workerUrl: WORKER_URL,
+    signalUrl: SIGNAL_URL,
+    log: log,
+    resolveMap: resolveMap,
+    // No local client, no recorder, no onDuplicateDevice/onMatchStateApplied/
+    // onReplayFinished - this process has no local player, no replay
+    // recording, and no UI to notify.
+  });
+  session.wireEngineEvents();
+
   log('minting room code...');
-  await requestRoomCode();
+  roomCode = await session.requestRoomCode();
   log('room code: ' + roomCode);
 
   log('connecting to signaling server...');
-  await connectSignal(roomCode, args.password, args.name);
-  log('signaling connected. peerId=' + myPeerId);
+  await session.connectSignalAsHost(roomCode, args.password, args.name);
+  log('signaling connected.');
 
   var mapDoc = loadMapDoc(args.map);
-  gi = new GameInstance(gameConfig, 'game');
-  wireHostEngineEvents();
   gi.loadMap(mapDoc);
   gi.start();
-  startStalePeerCheck();
+  session.startStalePeerCheck();
 
   log('');
   log('==================================================');
@@ -600,21 +127,13 @@ async function boot() {
 
 // ---- terminal control -----------------------------------------------------
 
-function describeEntry(entry) {
-  return 'clientId=' + entry.clientId + ' name="' + entry.account.display_name + '" team=' + entry.client.team
-    + (entry.client.leader ? ' [leader]' : '')
-    + (entry.account.authed ? ' [tagpro-verified]' : '');
-}
-
-function log(msg) { console.log('[host] ' + msg); }
-
 function printStatus() {
   log('room ' + roomCode + ' | map ' + (gi ? gi.gameState.mapName : '?') + ' | match state: ' + (gi ? gi.gameState.state : '?'));
-  var ids = Object.keys(peers);
-  if (!ids.length) { log('no players connected'); return; }
-  ids.forEach(function (id) {
-    var entry = peers[id];
-    log('  ' + (entry.ready ? 'ready' : 'connecting') + '  ' + describeEntry(entry));
+  var list = session.listConnections();
+  if (!list.length) { log('no players connected'); return; }
+  list.forEach(function (c) {
+    log('  ' + (c.ready ? 'ready' : 'connecting') + '  clientId=' + c.clientId + ' name="' + c.name + '" team=' + c.team
+      + (c.leader ? ' [leader]' : '') + (c.authed ? ' [tagpro-verified]' : ''));
   });
 }
 
@@ -634,37 +153,10 @@ function printHelp() {
   log('  quit                shut down the host and disconnect everyone');
 }
 
-// mapArg is either a bundled file under assets/maps/ (the REPL's own
-// `map <file>` command and --map= boot flag - local admin convenience,
-// unrelated to what a leader can do) or a bare Fortunate Maps id (what a
-// connected browser leader's Settings tab always sends now - see
-// local/controlPanel.js / local/fortunateMapsImport.js). Async either way
-// so both call sites (the 'changeMap' packet handler and the REPL command)
-// already just fire-and-forget + log on failure.
-async function switchMap(mapArg) {
-  var isFortunateId = /^\d+$/.test(mapArg);
-  var mapDoc;
-  try {
-    mapDoc = isFortunateId ? await importFortunateMap(WORKER_URL, mapArg) : loadMapDoc(mapArg);
-  } catch (e) {
-    log('could not load ' + mapArg + ': ' + e.message);
-    return;
-  }
-  gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });
-  gi.loadMap(mapDoc, isFortunateId ? { type: 'fortunatemaps', id: mapArg } : null);
-  for (var id in peers) peers[id].client.team = 'spectator';
-  broadcastToPeers(Object.assign({ type: 'mapChanged' }, mapDataFrom(gi.gameState)));
-  log('switched to ' + gi.gameState.mapName);
-}
-
 function shutdown() {
   log('shutting down...');
-  for (var id in peers) {
-    safeSend(peers[id], { type: 'kicked', message: 'The host is shutting down.' });
-    if (peers[id].pc) peers[id].pc.close();
-  }
+  if (session) session.shutdown('The host is shutting down.');
   if (gi) gi.stop();
-  if (signalWs) signalWs.close(1000);
   setTimeout(function () { process.exit(0); }, 500);
 }
 
@@ -685,15 +177,15 @@ function startRepl() {
     else if (cmd === 'pause') { gi.matchManager.pauseMatch(); log('match paused'); }
     else if (cmd === 'resume') { gi.matchManager.resumeMatch(); log('match resumed'); }
     else if (cmd === 'map' && arg) switchMap(/^\d+$/.test(arg) || arg.indexOf('.json') !== -1 ? arg : arg + '.json');
-    else if (cmd === 'kick' && arg) log(kickClient(Number(arg)) ? 'kicked ' + arg : 'no such player');
-    else if (cmd === 'ban' && arg) log(banClient(Number(arg)) ? 'banned ' + arg : 'no such player');
+    else if (cmd === 'kick' && arg) log(session.kickClient(Number(arg)) ? 'kicked ' + arg : 'no such player');
+    else if (cmd === 'ban' && arg) log(session.banClient(Number(arg)) ? 'banned ' + arg : 'no such player');
     else if (cmd === 'mute' && arg) {
-      var found = findPeerEntry(Number(arg));
-      if (found) log(setMuted(Number(arg), !found.entry.client.muted) ? ((found.entry.client.muted ? 'muted ' : 'unmuted ') + arg) : 'no such player');
+      var c = session.findClient(Number(arg));
+      if (c) log(session.setMuted(Number(arg), !c.client.muted) ? ((c.client.muted ? 'muted ' : 'unmuted ') + arg) : 'no such player');
       else log('no such player');
     }
-    else if (cmd === 'promote' && arg) log(promoteToLeader(Number(arg)) ? 'promoted ' + arg + ' to leader' : 'no such player');
-    else if (cmd === 'demote' && arg) log(demoteFromLeader(Number(arg)) ? 'demoted ' + arg : 'no such player');
+    else if (cmd === 'promote' && arg) log(session.promoteToLeader(Number(arg)) ? 'promoted ' + arg + ' to leader' : 'no such player');
+    else if (cmd === 'demote' && arg) log(session.demoteFromLeader(Number(arg)) ? 'demoted ' + arg : 'no such player');
     else if (cmd === 'quit' || cmd === 'exit') { rl.close(); shutdown(); return; }
     else if (cmd === 'help' || cmd === '') printHelp();
     else log('unknown command "' + cmd + '" - try "help"');

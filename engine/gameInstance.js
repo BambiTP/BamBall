@@ -128,11 +128,7 @@ class GameInstance {
 
     // Per-tile overrides are keyed by cell position, meaningless on a
     // different map - a map change starts clean (match resets keep them).
-    // Same for the drawing overlay: its pixel grid is derived from the
-    // map's dimensions.
-    this.gameState.tileOverrides      = {};
-    this.gameState.mapOverlayStrokes  = [];
-    this.gameState.tileOverlayStrokes = {};
+    this.gameState.tileOverrides = {};
   }
 
   _afterCreateMap(doc) {

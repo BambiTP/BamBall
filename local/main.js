@@ -39,6 +39,7 @@ async function start(bootFn) {
 
   simulationEvents.on('frame', cameraController.update);
 
+  rttTracker.start();
   initHud();
   initJoinUI();
   initMenu();

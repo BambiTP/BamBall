@@ -13,7 +13,7 @@
 // absolute step counter (5+ digits) or wall-clock ms ever did.
 //
 // Isomorphic module (CommonJS + plain global), same pattern as
-// movement.js/forceFields.js/overlayCoords.js in this directory: required
+// movement.js/forceFields.js in this directory: required
 // by the server, <script>-tagged by the client.
 var RECORD_TYPE = {
   SETUP:     0,

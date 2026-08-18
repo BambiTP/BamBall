@@ -3,25 +3,22 @@
 // pipeline (packetRouter -> packetApplier -> state/render) exactly the
 // packets a real server would send, built by the same, unmodified
 // packetBuilders.js the server uses. Nothing downstream of packetRouter
-// knows or cares that these packets never touched a WebSocket - that's the
-// whole point: this is also the seam a future webrtcTransport.js drops
-// into unchanged for peer-to-peer play (same packet shapes, same
-// packetRouter.dispatch() calls, different origin).
+// knows or cares that these packets never touched a WebSocket.
 //
-// The `socket` global below exists only so client/game/app/actions.js
-// (reused verbatim) has something to call .send() on - it mirrors
-// server/packets/incoming.js's HANDLERS table, just calling straight into
-// GameInstance instead of through session/input managers, since there's
-// only ever one local client here.
+// Thin adapter over local/hostSession.js: a session with exactly one local
+// client and never any peers. local/webrtcTransport.js's HOST role and
+// node-host/hostCli.js are the same session logic, just with peers (and,
+// for hostCli, no local client at all) - see hostSession.js's header.
 
 var localTransport = (function () {
   var WORKER_URL = 'https://api.bamball.workers.dev';
 
   var gi = null;
   var recorder = null;
+  var session = null;
   var roomCode = null; // minted by the Worker at boot - see requestRoomCode()
   var localId = 1;
-  var client = { id: localId, team: 'spectator' };
+  var client  = { team: 'spectator' };
   var account = { display_name: 'Player' };
 
   // Every room gets a unique, permanent code from the Worker (confirmed
@@ -29,7 +26,7 @@ var localTransport = (function () {
   // (WORKER_URL + '/replays/' + roomCode). Best-effort: if the Worker is
   // unreachable, the game still boots and plays fine, it just has no
   // replay home to upload to (recorder.finish() still works, the download
-  // fallback still fires - see the matchEnd handler below).
+  // fallback still fires).
   function requestRoomCode() {
     return fetch(WORKER_URL + '/api/groups', { method: 'POST' })
       .then(function (res) { return res.json(); })
@@ -47,8 +44,8 @@ var localTransport = (function () {
 
   // Uploads a finished recording to its room's permanent URL, if this
   // session got a room code at all. Failures are logged, not thrown - a
-  // player's local download (matchEnd handler below) is never blocked on
-  // the network round-trip to the Worker succeeding.
+  // player's local download is never blocked on the network round-trip to
+  // the Worker succeeding.
   function persistRecording(result, meta) {
     if (!roomCode) return Promise.resolve(null);
     return uploadReplay(WORKER_URL, roomCode, result.blob, result.gzip, meta)
@@ -62,242 +59,10 @@ var localTransport = (function () {
       });
   }
 
-  // engine event name -> packet builder, the same table
-  // server/packets/outgoing.js's EVENT_MAP uses - kept in sync by hand
-  // since this build has no server file to import it from.
-  var EVENT_MAP = {
-    score:                packetBuilders.score,
-    setTile:               packetBuilders.setTile,
-    connectionsChanged:    packetBuilders.connections,
-    spawnPointsChanged:    packetBuilders.spawnPoints,
-    capture:               packetBuilders.capture,
-    eggballChanged:        packetBuilders.eggballChanged,
-    physicsChanged:        packetBuilders.physicsChanged,
-    playerPhysicsChanged:  packetBuilders.playerPhysicsChanged,
-    tileSettingsChanged:   packetBuilders.tileSettingsChanged,
-    saveStatesChanged:     packetBuilders.saveStatesChanged,
-    overlayStroke:         packetBuilders.overlayStroke,
-    overlayUndo:           packetBuilders.overlayUndo,
-    overlayClear:          packetBuilders.overlayClear,
-    matchEnd:               packetBuilders.matchEnd,
-    powerupPreview:        packetBuilders.powerupPreview,
-    chat:                   packetBuilders.chat,
-  };
-
-  function wireEngineEvents() {
-    Object.keys(EVENT_MAP).forEach(function (event) {
-      var builder = EVENT_MAP[event];
-      gi.emitter.on(event, function () {
-        var packet = builder.apply(null, arguments);
-        packetRouter.dispatch(packet);
-        recorder.recordBroadcast(packet);
-      });
-    });
-
-    gi.emitter.on('matchStateChanged', function () {
-      packetRouter.dispatch(packetBuilders.matchState(gi.gameState));
-      recorder.recordBroadcast(packetBuilders.matchState(gi.gameState));
-      appEvents.emit('matchStateApplied', gi.gameState.state);
-
-      // Matches the real server's rule (server/packets/outgoing.js): a
-      // fresh match going live always starts recording.
-      if (gi.gameState.state === 'countdown' && !recorder.isRecording() && !recorder.isEnded()) {
-        recorder.start(mapDataFrom(gi.gameState));
-      }
-
-      // Confirmed behavior: picking a team is enough - anyone on red/blue
-      // who hasn't explicitly joined yet is auto-spawned the moment a
-      // match actually starts, rather than requiring a separate Join Game
-      // click. (Join Game still exists for jumping in mid-pregame, or
-      // after Leave Game, without waiting for the next match.)
-      if (gi.gameState.state === 'countdown' && !gi.gameState.getPlayer(localId)
-          && (client.team === 'red' || client.team === 'blue')) {
-        joinGame();
-      }
-    });
-
-    gi.emitter.on('matchEnd', function (data) {
-      if (!recorder.isRecording()) return;
-      var meta = {
-        mapName: gi.gameState.mapName,
-        mapId:   gi.gameState.mapId,
-        winner:  data.winner,
-        reason:  data.reason,
-        scores:  data.scores,
-      };
-      recorder.finish(data).then(function (result) {
-        downloadBlob(result.blob, result.filename);
-        persistRecording(result, meta);
-      });
-    });
-
-    // Only the collecting player needs their own effect timer.
-    gi.emitter.on('powerupCollected', function (playerId, key, timerMs) {
-      if (playerId !== localId) return;
-      packetRouter.dispatch(packetBuilders.powerupCollected(key, timerMs));
-    });
-
-    // Snapshots are per-viewer server-side; there's only one viewer here.
-    gi.emitter.on('snapshot', function (deltas, immediate) {
-      var delta = deltas.get(localId);
-      if (delta) packetRouter.dispatch(packetBuilders.snapshot(delta, immediate));
-    });
-
-    // The un-culled, globally-deduplicated equivalent of 'snapshot' - see
-    // game/snapshotFactory.js's buildReplayDelta - fed to the recorder
-    // regardless of whether anyone's watching live, same as the server.
-    gi.emitter.on('replayPlayers', function (delta) {
-      recorder.recordPlayerDelta(delta);
-    });
-  }
-
-  function mapDataFrom(gameState) {
-    return {
-      map: gameState.map,
-      wallMap: gameState.wallMap,
-      wells: gameState.wells,
-      mapId: gameState.mapId,
-      mapSource: gameState.mapSource,
-      mapName: gameState.mapName,
-      mapAuthor: gameState.mapAuthor,
-      switches: gameState.switches,
-      portals: gameState.portals,
-      tileOverrides: gameState.tileOverrides,
-      spawnPoints: gameState.spawnPoints,
-      mapOverlayStrokes: gameState.mapOverlayStrokes,
-      tileOverlayStrokes: gameState.tileOverlayStrokes,
-    };
-  }
-
-  // ---- outgoing packet handling (client/game/app/actions.js calls into
-  // this via the `socket` global below) - mirrors server/packets/
-  // incoming.js's HANDLERS table, minus everything this build's UI never
-  // sends (settings panels, leader controls, map editor - all dropped).
-
-  // Matches playerSessionManager.setTeam: switching team while already
-  // spawned kills the old body and respawns fresh on the new team
-  // immediately, rather than leaving a red body standing around for a
-  // player who's now blue.
-  function setTeam(team) {
-    var previousTeam = client.team;
-    client.team = team;
-    packetRouter.dispatch({ type: 'team', team: team });
-
-    if (team === previousTeam) return;
-    var player = gi.gameState.getPlayer(localId);
-    if (player) {
-      gi.gameHelpers.removePlayer(localId);
-      packetRouter.dispatch({ type: 'leftGame' });
-      if (team === 'red' || team === 'blue') {
-        var respawned = gi.gameHelpers.spawnPlayer(localId, team, account.display_name);
-        packetRouter.dispatch({ type: 'joinedGame', player: serializePlayer(respawned) });
-      }
-    }
-  }
-
-  function joinGame() {
-    if (gi.gameState.getPlayer(localId)) return;
-    if (client.team !== 'red' && client.team !== 'blue') {
-      packetRouter.dispatch({ type: 'error', message: 'select red or blue before joining the game' });
-      return;
-    }
-    var player = gi.gameHelpers.spawnPlayer(localId, client.team, account.display_name);
-    packetRouter.dispatch({ type: 'joinedGame', player: serializePlayer(player) });
-
-    // Confirmed default: auto-start the moment the first (only) player
-    // joins, since there's no leader/lobby step in this build.
-    if (gi.gameState.state === 'pregame') gi.matchManager.startMatch();
-  }
-
-  function leaveGame() {
-    var player = gi.gameState.getPlayer(localId);
-    if (!player) {
-      packetRouter.dispatch({ type: 'error', message: 'not currently in the game' });
-      return;
-    }
-    gi.gameHelpers.removePlayer(localId);
-    packetRouter.dispatch({ type: 'leftGame' });
-  }
-
-  function setInput(packet) {
-    var player = gi.gameState.getPlayer(localId);
-    if (!player) return;
-    player.left  = !!packet.left;
-    player.right = !!packet.right;
-    player.up    = !!packet.up;
-    player.down  = !!packet.down;
-    recorder.recordInput(localId, packet);
-  }
-
-  function handleOutgoing(packet) {
-    switch (packet.type) {
-      case 'join_red':       return setTeam('red');
-      case 'join_blue':      return setTeam('blue');
-      case 'join_spectator': return setTeam('spectator');
-      case 'join_game':      return joinGame();
-      case 'leave_game':     return leaveGame();
-      case 'input':          return setInput(packet);
-      case 'ping':            return packetRouter.dispatch({ type: 'pong', t: packet.t });
-      case 'detonateBomb': {
-        var player = gi.gameState.getPlayer(localId);
-        if (!player || player.dead || player.frozen || player.matchFrozen) return;
-        var affected = gi.gameHelpers.detonateRollingBomb(player);
-        if (affected) gi.emitter.emit('update', affected);
-        return;
-      }
-      case 'throwEgg': {
-        var throwPlayer = gi.gameState.getPlayer(localId);
-        if (!throwPlayer || throwPlayer.dead || throwPlayer.frozen || throwPlayer.matchFrozen) return;
-        gi.gameHelpers.throwEggball(throwPlayer, Number(packet.dirX) || 0, Number(packet.dirY) || 0);
-        return;
-      }
-      case 'chat': {
-        // Meaningless with one player, but shouldn't dead-end either - same
-        // round-trip-through-the-log every other transport gives it.
-        var text = typeof packet.text === 'string' ? packet.text.trim().slice(0, 240) : '';
-        if (!text) return;
-        var chatPacket = packetBuilders.chat({ id: localId, name: account.display_name, text: text });
-        packetRouter.dispatch(chatPacket);
-        recorder.recordBroadcast(chatPacket);
-        return;
-      }
-      // Solo play has exactly one player, so there's no "leader" to gate
-      // against the way webrtcTransport.js/hostCli.js do - whoever's here
-      // can always change their own room's settings. matchManager emits its
-      // own 'physicsChanged'/'matchStateChanged'/etc, already covered by
-      // EVENT_MAP above, so nothing here sends a packet itself.
-      case 'update_physics':       return void gi.matchManager.updatePhysics(packet.settings);
-      case 'update_settings':      return void gi.matchManager.updateSettings(packet.settings);
-      case 'update_tile_settings': return void gi.matchManager.updateTileSettings(packet.x, packet.y, packet.settings);
-      case 'update_player_physics': {
-        var targetPlayer = gi.gameState.getPlayer(packet.targetId);
-        if (!targetPlayer) return;
-        gi.matchManager.updatePlayerPhysics(targetPlayer, packet.settings);
-        return;
-      }
-      case 'changeMap':
-        switchMap(packet.mapId).catch(function (err) {
-          packetRouter.dispatch({ type: 'error', message: 'could not load map: ' + err.message });
-        });
-        return;
-      case 'save_state':  return void gi.matchManager.captureSaveState(packet.name);
-      case 'load_state':
-        if (!gi.matchManager.restoreSaveState(packet.name)) {
-          packetRouter.dispatch({ type: 'error', message: 'no save state named "' + packet.name + '"' });
-        }
-        return;
-      case 'delete_state': return void gi.matchManager.deleteSaveState(packet.name);
-      default:
-        // Everything else (leader/editor packets) has no handler in this
-        // build - the UI that would send them was dropped.
-        return;
-    }
-  }
-
-  // client/game/app/actions.js references the bare global `socket` -
-  // this is the whole of that surface this build needs.
+  // client/app.js references the bare global `socket` - this is the whole
+  // of that surface this build needs.
   var socket = {
-    send: function (packet) { handleOutgoing(packet); return true; },
+    send: function (packet) { session.handleOutgoing(localId, packet); return true; },
     connect: function () {},
     closeByUser: function () {},
     isOpen: function () { return true; },
@@ -311,16 +76,31 @@ var localTransport = (function () {
   // unmodified packetBuilders.joined - trivial local stand-ins for
   // room/client/account are all it needs). Starts the engine's own 60Hz
   // authoritative tick+snapshot loop; the caller (main.js) is responsible
-  // for starting the client's own prediction loop (client/game/loop.js)
-  // separately, same as the real client does against a real server.
+  // for starting the client's own prediction loop separately, same as the
+  // real client does against a real server.
   async function boot() {
     requestRoomCode(); // fire-and-forget in parallel - never blocks the map/game from loading
+
     var res    = await fetch(GAME_BASE_PATH + 'assets/maps/default.json');
     var mapDoc = await res.json();
 
     gi = new GameInstance(gameConfig, 'game');
     recorder = createLocalReplayRecorder(gi);
-    wireEngineEvents();
+    session = HostSession.createHostSession(gi, {
+      recorder: recorder,
+      workerUrl: WORKER_URL,
+      localClient: { client: client, account: account, dispatch: packetRouter.dispatch },
+      resolveMap: function (mapId) {
+        return importFortunateMap(mapId).then(function (mapDoc) {
+          return { mapDoc: mapDoc, mapMeta: { type: 'fortunatemaps', id: String(mapId) } };
+        });
+      },
+      onReplayFinished: function (result, meta) {
+        downloadBlob(result.blob, result.filename);
+        persistRecording(result, meta);
+      },
+    });
+    session.wireEngineEvents();
 
     // The authoritative (engine) physics world: one Box2D body per wall
     // tile on the whole map (~1200+ for the default map). Tried chunking
@@ -340,7 +120,7 @@ var localTransport = (function () {
     // Box2D bodies, needed so the local player's own movement predicts
     // correctly.
     var room = { instance: gi, kind: 'game', leaderId: localId };
-    var joinedPacket = packetBuilders.joined(room, client, account, mapDataFrom(gi.gameState));
+    var joinedPacket = packetBuilders.joined(room, client, account, HostSession.mapDataFrom(gi.gameState));
     packetApplier.applyJoined(joinedPacket);
 
     gi.start();
@@ -349,18 +129,12 @@ var localTransport = (function () {
 
   // Switches the live game to a Fortunate Maps id (local/
   // fortunateMapsImport.js) - the Settings tab's map field uses this.
-  // Reuses the client's existing 'mapChanged' handler (client/app/
-  // packetApplier.js) unchanged: it already tears down every player
-  // sprite/body and rebuilds the renderer from a mapChanged-shaped packet,
-  // exactly what a real server-driven map change does. Players have to
-  // rejoin (Join Red/Blue) after switching, same as the real game.
+  // Players have to rejoin (Join Red/Blue) after switching, same as the
+  // real game.
   function switchMap(mapId) {
     if (!gi) return Promise.reject(new Error('not booted yet'));
     return importFortunateMap(mapId).then(function (mapDoc) {
-      gi.gameState.players.slice().forEach(function (p) { gi.gameHelpers.removePlayer(p.id); });
-      gi.loadMap(mapDoc, { type: 'fortunatemaps', id: String(mapId) });
-      client.team = 'spectator';
-      packetRouter.dispatch(Object.assign({ type: 'mapChanged' }, mapDataFrom(gi.gameState)));
+      session.switchMap(mapDoc, { type: 'fortunatemaps', id: String(mapId) });
     });
   }
 

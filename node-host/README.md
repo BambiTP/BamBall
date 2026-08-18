@@ -1,12 +1,14 @@
 # node-host
 
 A headless, terminal-controlled P2P host for BamBall. Runs the exact same
-authoritative simulation the browser host (`local/webrtcTransport.js`) does
-- `engine/` and `shared/` are already written to run under plain
-  `require()` in Node (no bundler, no adaptation) - this just drives them
-  from a terminal instead of a browser tab, using
-  [`@roamhq/wrtc`](https://github.com/roamhq/node-webrtc) for WebRTC and
-  [`ws`](https://github.com/websockets/ws) for the signaling WebSocket.
+authoritative simulation the browser host (`local/webrtcTransport.js`) does,
+through the exact same session logic (`local/hostSession.js` - moderation,
+join/team, packet dispatch, engine-event wiring, WebRTC peer connections):
+none of `engine/`, `shared/`, or `local/hostSession.js` needed any
+adaptation to run under plain `require()` in Node. This file just drives
+that session from a terminal instead of a browser tab, using
+[`@roamhq/wrtc`](https://github.com/roamhq/node-webrtc) for WebRTC and
+[`ws`](https://github.com/websockets/ws) for the signaling WebSocket.
 
 No rendering, no DOM, no local player - this process's only job is running
 the match and relaying packets between peers, connecting to the same

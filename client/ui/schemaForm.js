@@ -53,7 +53,7 @@ function fromDisplayValue(entry, raw) {
 // already IS the current live value, not the default. settingsState.
 // physicsDefaults is the snapshot matchManager took of it before any
 // mutation could happen (getPhysicsDefaults(), sent once in the schema
-// packet - see client/state/settingsState.js), so it stays correct no
+// packet - see client/state.js), so it stays correct no
 // matter how many edits have happened since. matchSettingsDefaults doesn't
 // have this problem (engine/matchSettings.js's validateSettings always
 // spreads into a new object, never mutates DEFAULT_SETTINGS), but reading

@@ -1,44 +1,93 @@
-// menu.js - the Esc menu: tab switching, and the Teams tab's roster.
+// menu.js - the Esc menu: open/close, the two map cards (Pregame/Game) and
+// the modals they and the Settings button open, and the Teams roster.
 // Textures/Settings are separate files (texturePackPicker.js,
 // controlPanel.js) that just render into this menu's panels - this file
-// only owns the shell (open/close, tab switching) and the one tab simple
-// enough not to need its own file.
+// only owns the shell and the pieces simple enough not to need their own
+// file.
+//
+// Three overlays, each opened/closed independently: #settingsPanel
+// (textures + this browser's profile - never leader-gated, see
+// initSettingsPanel), #profileEditModal (map/physics/match/settings-code
+// for whichever of the two profiles a card opened - leader-gated, see
+// initProfileEditModal and controlPanel.js's header comment for how an
+// edit there decides whether it also applies live), and the base #menu
+// itself (Esc toggles this one; the other two are opened from buttons
+// inside it and close back to it, never stacking on top of each other).
 
 function toggleMenu() {
   document.getElementById('menu').classList.toggle('hidden');
 }
 
-// Tabs that build real DOM/fetch data (Textures, Settings Maker) only do
-// so the first time they're actually opened, not at page load while
-// they're sitting hidden - a hidden tab building a 50-tile grid + JSON
-// fetch before the game has even booted is pure wasted work at exactly
-// the moment the page is already doing the most (engine boot, texture
-// fetch, physics world setup).
-var lazyTabInit = {
-  texturesPanel: function () { mountTexturePackPicker(document.getElementById('texturePackPicker'), { loggedIn: true }); },
-  controlPanel: function () { initControlPanel(); },
-};
-var lazyTabDone = {};
+// Building real DOM/fetching data (texture grid, the physics/match forms)
+// only happens the first time each overlay is actually opened, not at page
+// load while it's sitting hidden - doing that work before the game has even
+// booted is pure waste at exactly the moment the page is already doing the
+// most (engine boot, texture fetch, physics world setup).
+var settingsPanelInitDone = false;
+var profileEditModalInitDone = false;
 
 // Set by renderTeams()/its solo fallback (leadership is roster-derived) -
 // read back by renderPauseToggle() when a bare matchInfo:changed event
 // fires with no roster info of its own attached.
 var lastKnownLeader = false;
 
-function switchMenuTab(tabId) {
-  var buttons = document.querySelectorAll('.menuTabBtn');
-  for (var i = 0; i < buttons.length; i++) {
-    buttons[i].classList.toggle('active', buttons[i].getAttribute('data-tab') === tabId);
-  }
-  var panels = document.querySelectorAll('.menuPanel');
-  for (var j = 0; j < panels.length; j++) {
-    panels[j].classList.toggle('hidden', panels[j].id !== tabId);
-  }
+function initSettingsPanel() {
+  var panel = document.getElementById('settingsPanel');
+  document.getElementById('menuSettingsBtn').addEventListener('click', function () {
+    panel.classList.remove('hidden');
+    if (!settingsPanelInitDone) {
+      settingsPanelInitDone = true;
+      mountTexturePackPicker(document.getElementById('texturePackPicker'), { loggedIn: true });
+      initIdentityUI({ nameInputId: 'menuDisplayNameInput', loginBtnId: 'menuTagproLoginBtn', reservedId: 'menuDisplayNameReserved' });
+    }
+  });
+  document.getElementById('settingsPanelCloseBtn').addEventListener('click', function () {
+    panel.classList.add('hidden');
+  });
+}
 
-  if (lazyTabInit[tabId] && !lazyTabDone[tabId]) {
-    lazyTabDone[tabId] = true;
-    lazyTabInit[tabId]();
+// Set once, on first modal open (see openProfileEditModal) - local/
+// controlPanel.js's initControlPanel() returns { activateProfile }, which
+// every later open reuses.
+var controlPanelApi = null;
+
+function openProfileEditModal(profile) {
+  document.getElementById('profileEditTitle').textContent = profile === 'pregame' ? 'Pregame' : 'Game';
+  document.getElementById('profileEditModal').classList.remove('hidden');
+  if (!profileEditModalInitDone) {
+    profileEditModalInitDone = true;
+    controlPanelApi = initControlPanel();
   }
+  // Points the forms/presets/map fields at THIS profile - never the other
+  // card's. Every edit from here goes straight to the room (see
+  // controlPanel.js's header comment for when that also means live).
+  controlPanelApi.activateProfile(profile);
+}
+
+function initProfileEditModal() {
+  document.getElementById('warmupMapCard').addEventListener('click', function () { openProfileEditModal('pregame'); });
+  document.getElementById('gameMapCard').addEventListener('click', function () { openProfileEditModal('game'); });
+  document.getElementById('profileEditCloseBtn').addEventListener('click', function () {
+    document.getElementById('profileEditModal').classList.add('hidden');
+  });
+}
+
+// Each card's thumbnail is just that profile's Fortunate Maps PNG shown
+// directly (worker/src/index.js's /api/fortunatemaps/:id/png proxy) - a
+// flat color-coded image, no tile decode/rendering needed. Blank until a
+// leader has set a map for that profile.
+function renderMapCards() {
+  [['pregame', 'warmupMapThumb'], ['game', 'gameMapThumb']].forEach(function (pair) {
+    var profile = game.profiles[pair[0]];
+    var img = document.getElementById(pair[1]);
+    if (profile && profile.mapId) {
+      img.src = activeTransport.workerUrl + '/api/fortunatemaps/' + profile.mapId + '/png';
+      img.style.visibility = '';
+    } else {
+      img.removeAttribute('src');
+      img.style.visibility = 'hidden';
+    }
+  });
 }
 
 // Kick/Mute/Ban/Promote/Demote are leader tools - "leader" means the main
@@ -78,7 +127,7 @@ function buildPlayerRow(p, isMe, myLeader) {
 
     // Kick/Ban/Demote never target the main leader - the host can't be
     // removed from their own room by a promoted leader (rejected host-side
-    // too, see webrtcTransport.js's handleOutgoingFor; hidden here as well
+    // too, see local/hostSession.js's handleOutgoing; hidden here as well
     // so the buttons aren't even offered).
     if (!p.mainLeader) {
       var kickBtn = document.createElement('button');
@@ -113,7 +162,7 @@ function buildPlayerRow(p, isMe, myLeader) {
 // when you're the only player), so game.roster stays empty there and this
 // falls back to reading game.players directly, same as before roles
 // existed. A P2P room (host or peer) gets a real roomState roster
-// (game.roster - see app/packetApplier.js) that includes every connected
+// (game.roster - see client/app.js) that includes every connected
 // client, spectators included, which game.players alone never did.
 function renderTeams() {
   var lists = {
@@ -158,23 +207,23 @@ function renderTeams() {
 }
 
 // Start/Pause/Resume/Reset/End are leader-only match control - see
-// engine/matchManager.js, wired through to the host's handleOutgoingFor by
+// engine/matchManager.js, wired through to the host's handleOutgoing (local/hostSession.js) by
 // the leader-gated start_match/pause_match/resume_match/reset_game/
 // end_match packets (local/webrtcTransport.js, node-host/hostCli.js).
 function renderMatchControls(myLeader) {
   var box = document.getElementById('matchControls');
   if (box) box.style.display = myLeader ? '' : 'none';
 
-  // Whole Control tab is leader-only, same reasoning as #matchControls -
-  // its contents (live physics/match edits, map change, save states) are
-  // all leader-gated server-side too, so a non-leader seeing the tab at
-  // all would just be a dead end. If the tab happened to be open when
-  // leadership is lost (demoted mid-session), fall back to Teams instead
-  // of leaving an inaccessible panel on screen.
-  var controlTabBtn = document.querySelector('.menuTabBtn[data-tab="controlPanel"]');
-  if (controlTabBtn) {
-    controlTabBtn.classList.toggle('hidden', !myLeader);
-    if (!myLeader && controlTabBtn.classList.contains('active')) switchMenuTab('teamsPanel');
+  // The map cards open #profileEditModal, whose contents (live physics/
+  // match edits, map change, save states) are all leader-gated server-side
+  // too - a non-leader clicking through would just be a dead end. If the
+  // modal happened to be open when leadership is lost (demoted mid-session),
+  // close it instead of leaving an inaccessible panel on screen.
+  var mapCards = document.getElementById('mapCards');
+  if (mapCards) mapCards.classList.toggle('hidden', !myLeader);
+  if (!myLeader) {
+    var modal = document.getElementById('profileEditModal');
+    if (modal) modal.classList.add('hidden');
   }
 
   renderPauseToggle();
@@ -238,12 +287,8 @@ function initMatchControls() {
 function initMenu() {
   appEvents.on('menu:toggle', toggleMenu);
 
-  var tabButtons = document.querySelectorAll('.menuTabBtn');
-  for (var i = 0; i < tabButtons.length; i++) {
-    tabButtons[i].addEventListener('click', function (event) {
-      switchMenuTab(event.currentTarget.getAttribute('data-tab'));
-    });
-  }
+  initSettingsPanel();
+  initProfileEditModal();
 
   gameEvents.on('player:created', renderTeams);
   gameEvents.on('player:removed', renderTeams);
@@ -252,6 +297,9 @@ function initMenu() {
   appEvents.on('roster:changed', renderTeams);
   initMatchControls();
   renderTeams();
+
+  appEvents.on('profiles:changed', renderMapCards);
+  renderMapCards();
 
   // The game's own directory, with any existing /group/<code> suffix or
   // index.html stripped and a guaranteed trailing "/" - e.g. "/"

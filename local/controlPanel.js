@@ -1,21 +1,22 @@
-// controlPanel.js - the Settings tab: the one place a leader configures a
-// match, live. Local one-click presets (local/localPresets.js - saved in
-// this browser, not an account), a deterministic settings code (save the
-// current configuration, or load someone else's by pasting their code back
-// in), a Fortunate Maps id for the map, live physics/match settings, and
-// in-memory save states. Leader-only - menu.js hides the whole tab and its
-// button otherwise (renderMatchControls), and every action here is also
-// leader-gated server-side (webrtcTransport.js/hostCli.js/localTransport.js),
-// so this file never has to duplicate that check - a rejected action just
-// shows the 'error' packet's message like everything else does.
+// controlPanel.js - the map/physics/match editor behind local/menu.js's two
+// profile cards (Pregame, Game). Every edit here - a physics/match field,
+// a preset, a settings code, a map pick - goes through
+// actions.updateProfile(profile, partial): the server merges it into that
+// profile's stored bucket, and ALSO applies it live immediately if the
+// room is currently in the phase that profile governs (see
+// engine/matchManager.js's setProfile) - there's no separate "draft" state
+// to manage here, editing IS the room's actual configuration for whichever
+// phase you're looking at.
 //
-// Edits settingsState.physics / settingsState.matchInfo.settings, the
-// room's real running values - there's no separate "authored file" concept
-// here. A preset or a settings code replaces the whole configuration and
-// applies immediately; a single physics/match field does NOT - it only
-// applies when its own Apply button fires (client/ui/schemaForm.js's
-// buildSettingRow), and its Reset button puts just that field back to its
-// shipped default and applies that instead.
+// Save States (bottom of the modal) are the one exception: they're
+// snapshots of the CURRENTLY RUNNING match (player positions, live score),
+// not a settings profile, so they act on the live room regardless of which
+// card is open - same as they always have.
+//
+// Leader-only - menu.js hides both cards otherwise (renderMatchControls),
+// and every action here is also leader-gated server-side, so this file
+// never has to duplicate that check - a rejected action just shows the
+// 'error' packet's message like everything else does.
 
 // Recursively sorts object keys before JSON.stringify-ing, so the same
 // settings always produce the same string (and therefore the same code)
@@ -30,9 +31,7 @@ function stableStringify(value) {
 // First 10 hex chars of a SHA-256 over the canonical settings string -
 // deterministic (same configuration always yields the same code, so
 // PUT-ing it to the content-addressed /api/settings/:code store is
-// idempotent) and short enough to read/paste by hand. SubtleCrypto needs
-// no library and is already assumed available elsewhere in this codebase
-// (see worker/src/index.js's crypto.getRandomValues).
+// idempotent) and short enough to read/paste by hand.
 function hashSettingsCode(bundle) {
   var bytes = new TextEncoder().encode(stableStringify(bundle));
   return crypto.subtle.digest('SHA-256', bytes).then(function (digest) {
@@ -43,17 +42,17 @@ function hashSettingsCode(bundle) {
   });
 }
 
+// Returns { activateProfile(name) } - local/menu.js calls this every time
+// either card opens (not just the first time) to point the forms below at
+// the right profile.
 function initControlPanel() {
-  // ---- live physics + match settings ------------------------------------
-  // Builds once, from whatever's live right now - deliberately NOT
-  // refreshed every time settingsState.physics/matchInfo.settings changes,
-  // since a leader can be mid-edit on several fields at once (typed, not
-  // yet Applied) and an auto-rebuild off some unrelated change (another
-  // leader's own edit, this leader's own Apply on a DIFFERENT field) would
-  // yank those unsent edits right out from under them. The one time a
-  // full rebuild off settingsState IS correct - a preset/code load
-  // replacing the whole configuration - goes through
-  // scheduleRebuildOnNextSync() below instead of a permanent subscription.
+  var currentProfile = null;
+
+  function currentProfileState() {
+    return game.profiles[currentProfile];
+  }
+
+  // ---- physics + match forms ---------------------------------------------
 
   var physRows  = document.getElementById('controlPhysicsRows');
   var physTabs  = document.getElementById('controlPhysicsSubTabs');
@@ -63,63 +62,51 @@ function initControlPanel() {
   function onPhysicsFieldApply(key, value) {
     var partial = {};
     partial[key] = value;
-    actions.updatePhysics(partial);
-    status.textContent = 'Applied ' + key + '.';
+    actions.updateProfile(currentProfile, { physics: partial });
+    status.textContent = 'Set ' + key + '.';
   }
 
   function onMatchFieldApply(key, value) {
     var partial = {};
     partial[key] = value;
-    actions.updateSettings(partial);
-    status.textContent = 'Applied ' + key + '.';
+    actions.updateProfile(currentProfile, { match: partial });
+    status.textContent = 'Set ' + key + '.';
   }
 
   function buildForms() {
-    buildSettingsPanel(physRows, 'physics', settingsState.physics, physTabs, onPhysicsFieldApply);
-    buildSettingsPanel(matchRows, 'match', settingsState.matchInfo.settings, null, onMatchFieldApply);
-  }
-
-  if (settingsState.settingsSchema) buildForms();
-  else settingsEvents.on('schema:loaded', buildForms);
-
-  // actions.updatePhysics/updateSettings (below and in onXFieldApply above)
-  // are fire-and-forget packet sends (client/app/actions.js) - the room's
-  // settingsState only actually reflects them once the host's broadcast
-  // round-trips back through packetApplier, which is what physics:changed/
-  // matchInfo:changed mark. rebuildArmed stays false the rest of the time
-  // (see the big comment above) so those two events don't turn back into a
-  // permanent auto-rebuild; a bundle apply arms it for a few seconds, long
-  // enough to catch the round trip, then it disarms itself again.
-  var rebuildArmed = false;
-  var rebuildDisarmTimer = null;
-  settingsEvents.on('physics:changed', function () { if (rebuildArmed) buildForms(); });
-  settingsEvents.on('matchInfo:changed', function () { if (rebuildArmed) buildForms(); });
-
-  function scheduleRebuildOnNextSync() {
-    rebuildArmed = true;
-    clearTimeout(rebuildDisarmTimer);
-    rebuildDisarmTimer = setTimeout(function () { rebuildArmed = false; }, 3000);
+    var profile = currentProfileState();
+    buildSettingsPanel(physRows, 'physics', profile.physics, physTabs, onPhysicsFieldApply);
+    buildSettingsPanel(matchRows, 'match', profile.match, null, onMatchFieldApply);
+    renderMapId();
   }
 
   // A preset/code bundle is { physics?, match?, mapId? } - unlike a single
-  // field's Apply above, loading one is a deliberate "replace everything"
-  // action, so it's fine (and the whole point) for it to blow away any
-  // in-progress unapplied edits sitting in the forms below.
+  // field's Apply above, loading one is a deliberate "replace everything in
+  // this profile" action - still just one updateProfile call, the server
+  // merges it the same way.
   function applyBundle(bundle) {
     if (!bundle) return;
-    scheduleRebuildOnNextSync();
-    if (bundle.mapId)   actions.changeMap(bundle.mapId);
-    if (bundle.physics) actions.updatePhysics(bundle.physics);
-    if (bundle.match)   actions.updateSettings(bundle.match);
+    actions.updateProfile(currentProfile, bundle);
   }
+
+  // Called by local/menu.js every time either card is opened, and whenever
+  // this profile changes underneath us (another leader editing the same
+  // card, or the round trip from our own edit above landing).
+  function activateProfile(name) {
+    currentProfile = name;
+    if (settingsState.settingsSchema) buildForms();
+  }
+
+  settingsEvents.on('schema:loaded', function () { if (currentProfile) buildForms(); });
+  appEvents.on('profiles:changed', function () { if (currentProfile) buildForms(); });
 
   // ---- presets --------------------------------------------------------------
   // Local to this browser (local/localPresets.js), not an account/server
-  // thing - see the Settings Code section below for the server-backed,
-  // shareable alternative. Seeded with three starting presets (Standard/
-  // Gravity/Eggball) the first time this browser opens this tab; after
-  // that, save-over-the-same-name to update one or the × to delete it,
-  // same as any preset you add yourself.
+  // thing - see Settings Code below for the server-backed, shareable
+  // alternative. Seeded with three starting presets (Standard/Gravity/
+  // Eggball) the first time this browser opens this tab; after that,
+  // save-over-the-same-name to update one or the × to delete it, same as
+  // any preset you add yourself.
 
   var presetRow      = document.getElementById('controlPresetRow');
   var presetNameInput = document.getElementById('controlPresetName');
@@ -159,10 +146,11 @@ function initControlPanel() {
   document.getElementById('controlSavePresetBtn').addEventListener('click', function () {
     var name = presetNameInput.value.trim();
     if (!name) { presetStatus.textContent = 'Name the preset first.'; return; }
+    var profile = currentProfileState();
     LocalPresets.upsertLocalPreset(name, {
-      physics: settingsState.physics,
-      match:   settingsState.matchInfo.settings,
-      mapId:   game.mapId,
+      physics: profile.physics,
+      match:   profile.match,
+      mapId:   profile.mapId,
     });
     presetNameInput.value = '';
     presetStatus.textContent = 'Saved "' + name + '".';
@@ -179,11 +167,8 @@ function initControlPanel() {
   var loadCodeInput  = document.getElementById('controlLoadCodeInput');
 
   document.getElementById('controlGetCodeBtn').addEventListener('click', function () {
-    var bundle = {
-      physics: settingsState.physics,
-      match:   settingsState.matchInfo.settings,
-      mapId:   game.mapId,
-    };
+    var profile = currentProfileState();
+    var bundle = { physics: profile.physics, match: profile.match, mapId: profile.mapId };
     codeStatus.textContent = 'Computing code…';
     var code;
     hashSettingsCode(bundle).then(function (computed) {
@@ -223,23 +208,19 @@ function initControlPanel() {
   var mapStatus   = document.getElementById('controlMapStatus');
   var defaultMapRow = document.getElementById('controlDefaultMapRow');
 
-  function renderMapName() {
-    mapNameEl.textContent = 'Current: ' + (game.mapName || '(unknown)');
+  function renderMapId() {
+    var id = currentProfileState().mapId;
+    mapNameEl.textContent = (currentProfile === 'pregame' ? 'Pregame' : 'Game') + ' map: ' + (id ? id : '(none set)');
   }
-  renderMapName();
-  appEvents.on('map:changed', function () {
-    renderMapName();
-    mapStatus.textContent = '';
-  });
 
-  function loadMap(id) {
+  function setProfileMap(id) {
     if (!id) return;
-    actions.changeMap(id);
-    mapStatus.textContent = 'Loading map ' + id + '…';
+    actions.updateProfile(currentProfile, { mapId: id });
+    mapStatus.textContent = 'Set.';
   }
 
   document.getElementById('controlMapChangeBtn').addEventListener('click', function () {
-    loadMap(mapIdInput.value.trim());
+    setProfileMap(mapIdInput.value.trim());
   });
 
   // Curated CTF ids (local/defaultMaps.js) - one click straight to a known
@@ -248,7 +229,7 @@ function initControlPanel() {
     var btn = document.createElement('button');
     btn.className = 'menuBtn';
     btn.textContent = String(id);
-    btn.addEventListener('click', function () { loadMap(id); });
+    btn.addEventListener('click', function () { setProfileMap(id); });
     defaultMapRow.appendChild(btn);
   });
 
@@ -260,11 +241,13 @@ function initControlPanel() {
     var btn = document.createElement('button');
     btn.className = 'menuBtn';
     btn.textContent = String(EGGBALL_MAP_ID);
-    btn.addEventListener('click', function () { loadMap(EGGBALL_MAP_ID); });
+    btn.addEventListener('click', function () { setProfileMap(EGGBALL_MAP_ID); });
     document.getElementById('controlEggballMapRow').appendChild(btn);
   })();
 
   // ---- save states ----------------------------------------------------------
+  // Unlike everything above, these act on the LIVE match right now,
+  // regardless of which card is open - see this file's header comment.
   // In-memory only, lives on the host for this room's lifetime (see
   // engine/matchManager.js's captureSaveState/restoreSaveState/deleteSaveState
   // and the save_state/load_state/delete_state packet cases). The host
@@ -320,4 +303,6 @@ function initControlPanel() {
     actions.saveState(name);
     stateStatus.textContent = 'Saved "' + name + '".';
   });
+
+  return { activateProfile: activateProfile };
 }

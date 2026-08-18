@@ -1,6 +1,6 @@
 // renderer.js - the Pixi application, layer stack, and core map drawing.
 // This file defines the Renderer class; render/spriteAtlas.js,
-// render/wallAutotile.js, render/playerRenderer.js, render/overlayRenderer.js,
+// render/wallAutotile.js, render/playerRenderer.js,
 // render/editorOverlay.js and render/camera.js each attach more methods onto
 // Renderer.prototype (composition across files, no bundler, same pattern the
 // rest of this codebase already uses for script-tag loading) so the drawing
@@ -9,7 +9,7 @@
 //
 // Renderer reads gameState (state/ is below render/ in the
 // layer order, so this dependency direction is fine) but never calls back
-// into state mutation functions - state/gameState.js emits events instead
+// into state mutation functions - client/state.js emits events instead
 // of calling this class, closing the old bidirectional coupling.
 
 const GRID_SIZE = 40;
@@ -158,8 +158,7 @@ class Renderer {
     // leaves every sprite and Graphics of the previous map alive, and a
     // Graphics holds its own GPU geometry/texture. texture:false is
     // deliberate - tile sprites share the atlas texture, which must survive.
-    // (The baked background texture isn't shared, and is released in
-    // bakeBackground; the overlay canvases in initMapOverlay below.)
+    // (The baked background texture isn't shared, and is released below.)
     for (const child of this.world.removeChildren()) {
       if (!child.destroyed) child.destroy({ children: true });
     }
@@ -180,10 +179,6 @@ class Renderer {
     }
 
     this.bakeBackground();
-
-    // Paint-mode overlay: built here so its layer slot lands above every
-    // tile layer and below players (getLayer order is creation order).
-    this.initMapOverlay();
   }
 
   // Full tile redraw through the exact drawing loop createMap uses - called
@@ -204,7 +199,7 @@ class Renderer {
   // for the rest of the session: this function's predecessor destroyed the
   // 'connections' layer but only nulled those refs in createMap, not here).
   redrawTiles() {
-    const keepNames = ['overlay', 'players', 'particles', 'editHover'];
+    const keepNames = ['players', 'particles', 'editHover'];
     const kept = [];
     for (const name of Object.keys(this.layers)) {
       const container = this.layers[name];
@@ -280,7 +275,7 @@ class Renderer {
   // that genuinely belong to nobody else are released by hand.
   //
   // This matters because a wall paint re-bakes up to 20x/second (redrawTiles,
-  // debounced in app/packetApplier.js): leaking a map's worth of texture per
+  // debounced in client/app.js): leaking a map's worth of texture per
   // redraw ran the GPU out of memory within seconds of a paint drag, which is
   // a hard crash of the tab and, on many drivers, of the machine.
   destroyBakedBackground() {
@@ -410,7 +405,6 @@ class Renderer {
     // texture:false below spares the shared atlas but also spares these,
     // which nothing else references.
     this.destroyBakedBackground();
-    this.destroyOverlays();
     this.app.destroy(true, { children: true, texture: false, baseTexture: false });
     this.canvas.removeChild(this.app.canvas);
   }

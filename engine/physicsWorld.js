@@ -1,6 +1,7 @@
 (function () {
 var Box2D = (typeof require === 'function') ? require('../shared/Box2dWeb-2.1.a.3') : globalThis.Box2D;
 const { tileToWorld, TILE_SIZE } = (typeof require === 'function') ? require('./coords') : globalThis.Coords;
+const { Box2DBody, buildShapeFromTileData } = (typeof require === 'function') ? require('../shared/box2dBody') : globalThis;
 
 const {
   b2Vec2,
@@ -91,11 +92,6 @@ class PhysicsWorld {
     this.world.SetGravity(new b2Vec2(x, y));
   }
 
-  step(timeStep) {
-    this.world.Step(timeStep, 8, 3);
-    this.world.ClearForces();
-  }
-
   createDynamicBody(x, y, options = {}) {
     const bodyDef          = new b2BodyDef();
     bodyDef.type           = b2Body.b2_dynamicBody;
@@ -165,59 +161,15 @@ makeBody(id, x, y, physicsLookup) {
     fixDef.restitution = this.config.wallRestitution;
   }
 
-  if (tileData.type === 'vector') {
-    const shape = new Box2D.Collision.Shapes.b2PolygonShape();
-    shape.SetAsArray(tileData.vectors.map(v => new b2Vec2(v.x, v.y)));
-    fixDef.shape = shape;
-  } else if (tileData.type === 'square') {
-    const shape = new Box2D.Collision.Shapes.b2PolygonShape();
-    shape.SetAsBox(tileData.size / 2 / TILE_SIZE, tileData.size / 2 / TILE_SIZE);
-    fixDef.shape = shape;
-  } else if (tileData.type === 'circle') {
-    fixDef.shape = new b2CircleShape(tileData.size / 2 / TILE_SIZE);
-  }
+  fixDef.shape = buildShapeFromTileData(tileData, TILE_SIZE);
 
   body.CreateFixture(fixDef);
 
   return body;
 }
 
-  destroyBody(body) {
-    if (body) this.world.DestroyBody(body);
-  }
-
-  getPosition(body) {
-    const pos = body.GetPosition();
-    return { x: pos.x, y: pos.y };
-  }
-
-  getVelocity(body) {
-    const vel = body.GetLinearVelocity();
-    return { x: vel.x, y: vel.y };
-  }
-
-  setVelocity(body, x, y) {
-    body.SetLinearVelocity(new b2Vec2(x, y));
-  }
-
-  setPosition(body, x, y) {
-    body.SetPosition(new b2Vec2(x, y));
-  }
-
   applyImpulse(body, x, y) {
     body.ApplyImpulse(new b2Vec2(x, y), body.GetWorldCenter());
-  }
-
-  applyForce(body, x, y) {
-    body.ApplyForce(new b2Vec2(x, y), body.GetWorldCenter());
-  }
-
-  getMass(body) {
-    return body.GetMass();
-  }
-
-  getAngle(body) {
-    return body.GetAngle();
   }
 
   setBodyType(body, type) {
@@ -228,24 +180,9 @@ makeBody(id, x, y, physicsLookup) {
     };
     body.SetType(types[type]);
   }
-
-  setSensor(body, bool) {
-    for (let f = body.GetFixtureList(); f; f = f.GetNext()) {
-      f.SetSensor(bool);
-    }
-  }
-
-  setDamping(body, linear, angular) {
-    body.SetLinearDamping(linear);
-    body.SetAngularDamping(angular);
-  }
-
-  setFriction(body, value) {
-    for (let f = body.GetFixtureList(); f; f = f.GetNext()) {
-      f.SetFriction(value);
-    }
-  }
 }
+
+Object.assign(PhysicsWorld.prototype, Box2DBody);
 
 if (typeof module !== 'undefined' && module.exports) module.exports = PhysicsWorld;
 if (typeof globalThis !== 'undefined') globalThis.PhysicsWorld = PhysicsWorld;

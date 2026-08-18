@@ -4,6 +4,11 @@ const { SCHEMA, SCHEMA_BY_KEY, coerce, applyPartial } = (typeof require === 'fun
 
 const STEP_MS = 1000 / 60;
 
+// How long the 'ended' state's results screen stays up before the room
+// auto-resets to pregame and applies the pregame profile - see
+// createMatchManager's tick() 'ended' handling.
+const RESULTS_DELAY_MS = 10000;
+
 const PHYSICS_ENTRIES = SCHEMA.filter(e => e.scope === 'physics');
 const MATCH_ENTRIES    = SCHEMA.filter(e => e.scope === 'match');
 const PLAYER_KEYS      = PHYSICS_ENTRIES.filter(e => e.playerScoped).map(e => e.key);
@@ -58,6 +63,80 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
 
   function getMatchSchemaMeta() {
     return schemaMeta(MATCH_ENTRIES);
+  }
+
+  // ---- pregame/game profiles -----------------------------------------
+  //
+  // Two persistent, leader-configured {physics, match, mapId} buckets -
+  // the room is always "in" one or the other (see isPregamePhase/
+  // isGamePhase below), and there is no separate live-vs-draft distinction:
+  // editing a field just updates that bucket, and if the room is CURRENTLY
+  // in the phase that bucket governs, the edit also applies live in the
+  // same call. Editing "game" while the room is in pregame (or vice versa)
+  // only updates the stored bucket - it takes effect the next time the room
+  // actually enters that phase (tick()'s 'ended' auto-transition applies
+  // the pregame bucket wholesale; startMatch() applies the game bucket
+  // wholesale - see applyProfile below).
+  //
+  // Map loading is the one part this file can't do itself - engine/ has no
+  // network access, so that half is handed off via the 'applyProfileMap'
+  // event for whichever transport is running (local/hostSession.js) to
+  // fetch and load, both here and in the live-apply path in setProfile.
+  var profiles = {
+    pregame: { physics: {}, match: {}, mapId: null },
+    game:    { physics: {}, match: {}, mapId: null },
+  };
+
+  // "Pregame" covers both the literal 'pregame' state and the 'ended'
+  // results screen - the user's own framing: "The pregame is before the
+  // game starts and 10 seconds after the game ends."
+  function isPregamePhase() {
+    return gameState.state === 'pregame' || gameState.state === 'ended';
+  }
+
+  function isGamePhase() {
+    return gameState.state === 'countdown' || gameState.state === 'live'
+      || gameState.state === 'overtime' || gameState.state === 'paused';
+  }
+
+  // partial: { physics?, match?, mapId? } - merged into the named bucket
+  // (never replaces the whole thing), then live-applied on top of that
+  // immediately if the room is currently in the phase this profile governs.
+  function setProfile(name, partial) {
+    if (name !== 'pregame' && name !== 'game') return false;
+    var profile = profiles[name];
+    if (partial.physics) Object.assign(profile.physics, partial.physics);
+    if (partial.match)   Object.assign(profile.match, partial.match);
+    if (partial.mapId !== undefined) profile.mapId = partial.mapId;
+
+    emitter.emit('profilesChanged', getProfiles());
+
+    var live = (name === 'pregame' && isPregamePhase()) || (name === 'game' && isGamePhase());
+    if (live) {
+      if (partial.physics) updatePhysics(partial.physics);
+      if (partial.match)   updateSettings(partial.match);
+      if (partial.mapId)   emitter.emit('applyProfileMap', partial.mapId);
+    }
+    return true;
+  }
+
+  // Full buckets, not just mapId - the client needs the real values to
+  // render each profile's own form (there's no local draft copy to fall
+  // back on any more).
+  function getProfiles() {
+    return { pregame: profiles.pregame, game: profiles.game };
+  }
+
+  // Applies a bucket wholesale - called when the room actually TRANSITIONS
+  // into the phase that bucket governs (tick()'s 'ended'->pregame
+  // auto-reset, and startMatch()), as opposed to setProfile's live-apply
+  // above, which fires off a single edited field while already in that
+  // phase.
+  function applyProfile(name) {
+    var profile = profiles[name];
+    if (profile.physics) updatePhysics(profile.physics);
+    if (profile.match)   updateSettings(profile.match);
+    if (profile.mapId)   emitter.emit('applyProfileMap', profile.mapId);
   }
 
   function elapsedMs() {
@@ -182,6 +261,12 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
   function startMatch() {
     if (gameState.state !== 'pregame' && gameState.state !== 'ended') return false;
 
+    // Physics/match settings apply synchronously; a configured map load is
+    // async (see applyProfile's header) and lands shortly after via
+    // 'applyProfileMap' - the countdown below doesn't wait on it, same
+    // trade-off as the 'ended'->pregame auto-transition in tick().
+    applyProfile('game');
+
     resetField();
     freezeAll(true);
 
@@ -194,7 +279,8 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
   }
 
   function endMatch(reason, winner = determineWinner()) {
-    gameState.state = 'ended';
+    gameState.state          = 'ended';
+    gameState.phaseStartStep = gameState.stepCount; // tick()'s 'ended' handling measures the results-screen delay from here
     freezeAll(true);
     stopAllMomentum();
 
@@ -557,6 +643,22 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
 
     const settings = gameState.matchSettings;
 
+    // Results screen auto-dismiss: RESULTS_DELAY_MS after a match ends,
+    // clear every spawned player back out (unlike resetMatch(), which
+    // respawns everyone in place - this is a full "everyone gets deleted"
+    // reset, not a restart) and land in pregame, applying the pregame
+    // profile.
+    if (gameState.state === 'ended') {
+      if (elapsedMs() >= RESULTS_DELAY_MS) {
+        for (const player of gameState.players.slice()) gameHelpers.removePlayer(player.id);
+        gameState.state          = 'pregame';
+        gameState.phaseStartStep = gameState.stepCount;
+        applyProfile('pregame');
+        emitter.emit('matchStateChanged');
+      }
+      return;
+    }
+
     if (gameState.state === 'countdown') {
       if (elapsedMs() >= settings.countdownDuration) {
         freezeAll(false);
@@ -754,6 +856,8 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
     captureSaveState,
     restoreSaveState,
     deleteSaveState,
+    setProfile,
+    getProfiles,
     tick,
   };
 };

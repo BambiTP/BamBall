@@ -7,7 +7,7 @@
 // the velocity math.
 //
 // Isomorphic module (CommonJS + plain global), same pattern as
-// forceFields.js/overlayCoords.js in this directory: required by the
+// forceFields.js in this directory: required by the
 // server, <script>-tagged by the client.
 function movePlayerVelocity(vx, vy, floorFriction, accel, maxSpeed, keys) {
   var friction = 1 - floorFriction;

@@ -18,7 +18,7 @@ function saveDisplayNamePref(name) {
 // The name + identity actually used when creating/joining a group -
 // main.js reads this right before webrtcTransport.createGroup/joinGroup.
 // Only sends the tagpro token (and so only gets the green verified name +
-// authed flag - see handleOutgoingFor's 'identify' case in
+// authed flag - see local/hostSession.js's handleOutgoing 'identify' case in
 // webrtcTransport.js/node-host/hostCli.js, which requires an actual
 // verified token before setting authed:true, never just a matching-looking
 // name) when the saved display name still matches the verified

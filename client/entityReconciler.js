@@ -3,7 +3,7 @@
 // signaled by the server's snap counter, a delta past SYNC_SNAP_DISTANCE,
 // or an `immediate` packet - see below) or eases in over a few fixed-step
 // ticks. This is simulation logic, not pure state, because it reads/writes
-// the physics body directly - state/gameState.js only tracks the
+// the physics body directly - client/state.js only tracks the
 // non-physics entity fields (name, team, flags); this module and
 // simulation/loop.js own everything position-related.
 //

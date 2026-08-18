@@ -15,7 +15,7 @@ Object.assign(Renderer.prototype, {
   // circle onto the carrier's own player.container (see attachEgg below),
   // which already moves with them for free.
   initEggballSprite() {
-    if (this.eggballSprite) return;
+    if (this.eggballSprite && !this.eggballSprite.destroyed) return;
     const gfx = new PIXI.Graphics();
     gfx.beginFill(EGGBALL_COLOR);
     gfx.drawCircle(0, 0, EGGBALL_RADIUS);
@@ -26,7 +26,7 @@ Object.assign(Renderer.prototype, {
   },
 
   // Called once per rendered frame (renderer.js's ticker) - game.eggball is
-  // the last eggballChanged packet (see client/app/packetApplier.js),
+  // the last eggballChanged packet (see client/app.js),
   // snapped to directly rather than lerped: while thrown, the server
   // broadcasts a fresh position every physics tick (engine/eggballLogic.js's
   // syncEggball), fine-grained enough that interpolation isn't needed the

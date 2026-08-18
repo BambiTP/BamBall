@@ -285,27 +285,36 @@
 
   /* ---------------------------------------------------------- Esc menu */
   #menu {
-    position: absolute; inset: 0; z-index: 100; display: flex; flex-direction: column;
-    background: rgba(8,10,17,0.88); backdrop-filter: blur(10px);
+    position: absolute; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center;
+    background: rgba(8,10,17,0.88); backdrop-filter: blur(10px); overflow: auto;
   }
-  #menuTabs {
-    display: flex; gap: 6px; padding: 20px 24px 0; border-bottom: 1px solid var(--border);
-    flex: none;
-  }
-  .menuTabBtn {
-    background: none; border: none; border-bottom: 2px solid transparent;
-    color: var(--text-faint); padding: 10px 6px 14px; margin-right: 22px;
-    font-size: 14px; font-weight: 600; letter-spacing: 0.3px; cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .menuTabBtn:hover { color: var(--text-dim); }
-  .menuTabBtn.active { color: var(--text); border-bottom-color: var(--accent); }
-  #menuPanels { flex: 1; overflow: auto; padding: 28px 24px 60px; max-width: 880px; margin: 0 auto; width: 100%; }
-  .menuPanel.hidden { display: none; }
   #menuCloseHint {
-    position: absolute; top: 22px; right: 24px; color: var(--text-faint); font-size: 11.5px;
+    position: absolute; top: 22px; left: 24px; color: var(--text-faint); font-size: 11.5px;
     letter-spacing: 0.5px;
   }
+  #menuSettingsBtn {
+    position: absolute; top: 18px; right: 24px; z-index: 1;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border-2);
+    border-radius: var(--radius-sm); padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  #menuSettingsBtn:hover { border-color: var(--accent); background: var(--surface-3); }
+  #menuBody { flex: none; padding: 64px 24px 60px; max-width: 880px; margin: 0 auto; width: 100%; }
+
+  /* ---- map cards --------------------------------------------------- */
+  #mapCards { display: flex; gap: 16px; margin-bottom: 26px; }
+  .mapCard {
+    flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 14px; cursor: pointer; transition: border-color 0.15s, transform 0.1s;
+    font: inherit; color: inherit;
+  }
+  .mapCard:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .mapCardThumb {
+    width: 100%; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); overflow: hidden;
+    background: var(--surface-2); display: flex; align-items: center; justify-content: center;
+  }
+  .mapCardThumb img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+  .mapCardLabel { font-size: 13.5px; font-weight: 700; letter-spacing: 0.4px; }
 
   /* ---- shared card + button vocabulary used across Teams/Settings ---- */
   .panelCard {
@@ -343,6 +352,9 @@
   #joinBlueBtn { background: var(--blue-soft); color: var(--blue-team); border-color: rgba(63,140,255,0.35); }
   #joinBlueBtn:hover:not(:disabled) { background: var(--blue-team); color: #fff; }
   #joinBlueBtn.active { background: var(--blue-team); color: #fff; box-shadow: 0 0 0 3px rgba(63,140,255,0.3); }
+  #joinSpectatorBtn { background: var(--surface-2); color: var(--text); border-color: var(--border-2); }
+  #joinSpectatorBtn:hover:not(:disabled) { filter: brightness(1.15); }
+  #joinSpectatorBtn.active { background: var(--text-dim); color: var(--surface); box-shadow: 0 0 0 3px var(--border-2); }
   #joinGameBtn { background: var(--go); color: #06251a; }
   #joinGameBtn:hover:not(:disabled) { filter: brightness(1.08); }
   #leaveGameBtn { background: var(--surface-2); color: var(--text); border-color: var(--border-2); }
@@ -385,6 +397,29 @@
     padding: 3px 8px; color: var(--accent); font-weight: 700; letter-spacing: 1px;
   }
   .groupCodeLine a { color: var(--accent); }
+
+  /* ---- settings panel + profile edit modal (side-panel-card overlays,
+     same visual language as #linkJoinModal above) --------------------- */
+  #settingsPanel, #profileEditModal {
+    position: absolute; inset: 0; z-index: 200; display: flex; justify-content: flex-end;
+    background: rgba(6,7,12,0.72); backdrop-filter: blur(4px);
+  }
+  .sidePanelCard {
+    width: 100%; max-width: 460px; height: 100%; overflow: auto;
+    background: linear-gradient(180deg, var(--surface), var(--bg-1));
+    border-left: 1px solid var(--border-2); box-shadow: var(--shadow-lg);
+    padding: 22px 22px 60px; animation: modalIn 0.18s ease-out;
+  }
+  .sidePanelHeader {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+  }
+  .sidePanelHeader h3 { margin: 0; font-size: 17px; font-family: var(--font-display); font-weight: 700; }
+  .panelCloseBtn {
+    background: none; border: none; color: var(--text-faint); font-size: 22px; line-height: 1;
+    cursor: pointer; padding: 2px 6px;
+  }
+  .panelCloseBtn:hover { color: var(--text); }
 
   /* ---- settings / control tab ----------------------------------------- */
   .makerRow {
@@ -466,7 +501,7 @@
   .saveStateRow .saveStateName { flex: 1; font-weight: 500; }
   .saveStateRow .menuBtn { padding: 5px 12px; margin: 0; font-size: 11px; }
 
-  #texturesPanel { padding-top: 4px; }
+  #texturePackPicker { padding-top: 4px; }
 </style>
 <link rel="stylesheet" href="shared/texturePackPicker.css">
 </head>
@@ -559,51 +594,99 @@
 
 <div id="menu" class="hidden">
   <div id="menuCloseHint">Esc to close</div>
-  <div id="menuTabs">
-    <button class="menuTabBtn active" data-tab="teamsPanel">Teams</button>
-    <button class="menuTabBtn" data-tab="controlPanel">Settings</button>
-    <button class="menuTabBtn" data-tab="texturesPanel">Textures</button>
-  </div>
-  <div id="menuPanels">
-    <div id="teamsPanel" class="menuPanel">
-      <div id="joinControls">
-        <div class="joinRow">
-          <button id="joinRedBtn">Join Red Team</button>
-          <button id="joinBlueBtn">Join Blue Team</button>
-        </div>
-        <div class="joinRow">
-          <button id="joinGameBtn">Join Game</button>
-          <button id="leaveGameBtn">Leave Game</button>
-        </div>
-        <button id="leaveGroupBtn">Leave Group</button>
-      </div>
-      <div id="teamsGrid">
-        <div class="teamBox" data-team="red"><h3>Red</h3><div class="teamList" id="redTeamList"></div></div>
-        <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
-        <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
-      </div>
-      <!-- Leader-only match control - hidden by default, shown by menu.js's renderMatchControls once the roster confirms this client is a leader. -->
-      <div id="matchControls" style="display:none;">
-        <h3>Match Control</h3>
-        <div class="joinRow">
-          <button id="matchStartBtn" class="menuBtn">Start</button>
-          <button id="matchPauseBtn" class="menuBtn">Pause</button>
-          <button id="matchResumeBtn" class="menuBtn">Resume</button>
-          <button id="matchResetBtn" class="menuBtn">Reset</button>
-          <button id="matchEndBtn" class="menuBtn">End</button>
-        </div>
-      </div>
-      <div class="groupCodeLine">Group: <code id="groupCodeText">connecting…</code> <button class="menuBtn" id="copyGroupLinkBtn" style="display:none;padding:4px 10px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays">Browse all replays</a></div>
+  <button id="menuSettingsBtn" title="Textures &amp; profile">⚙ Settings</button>
+
+  <div id="menuBody">
+    <div id="mapCards">
+      <!-- Thumbnails are just each profile's Fortunate Maps PNG
+           (worker/src/index.js's /api/fortunatemaps/:id/png proxy) shown
+           directly - a flat color-coded image, no tile decode/rendering
+           needed. See local/menu.js's renderMapCards. Editing either
+           card's map/settings opens #profileEditModal. -->
+      <button class="mapCard" id="warmupMapCard" data-profile="pregame">
+        <div class="mapCardThumb"><img id="warmupMapThumb" alt=""></div>
+        <div class="mapCardLabel">Pregame</div>
+      </button>
+      <button class="mapCard" id="gameMapCard" data-profile="game">
+        <div class="mapCardThumb"><img id="gameMapThumb" alt=""></div>
+        <div class="mapCardLabel">Game</div>
+      </button>
     </div>
 
-    <!-- Leader-only, same gate as #matchControls - see local/controlPanel.js
-         and local/menu.js's renderMatchControls (also toggles this tab
-         button). A preset click or a settings-code load replaces the whole
-         physics/match configuration at once and applies immediately; a
-         single field in the Physics/Match sections below does NOT apply
-         until its own Apply button is clicked (Reset puts that one field
-         back to its shipped default and applies that). -->
-    <div id="controlPanel" class="menuPanel hidden">
+    <div id="joinControls">
+      <div class="joinRow">
+        <button id="joinRedBtn">Join Red Team</button>
+        <button id="joinBlueBtn">Join Blue Team</button>
+        <button id="joinSpectatorBtn">Spectate</button>
+      </div>
+      <div class="joinRow">
+        <button id="joinGameBtn">Join Game</button>
+        <button id="leaveGameBtn">Leave Game</button>
+      </div>
+      <button id="leaveGroupBtn">Leave Group</button>
+    </div>
+
+    <div id="teamsGrid">
+      <div class="teamBox" data-team="red"><h3>Red</h3><div class="teamList" id="redTeamList"></div></div>
+      <div class="teamBox" data-team="blue"><h3>Blue</h3><div class="teamList" id="blueTeamList"></div></div>
+      <div class="teamBox" data-team="spectator"><h3>Spectating</h3><div class="teamList" id="spectatorTeamList"></div></div>
+    </div>
+
+    <!-- Leader-only match control - hidden by default, shown by menu.js's renderMatchControls once the roster confirms this client is a leader. -->
+    <div id="matchControls" style="display:none;">
+      <h3>Match Control</h3>
+      <div class="joinRow">
+        <button id="matchStartBtn" class="menuBtn">Start</button>
+        <button id="matchPauseBtn" class="menuBtn">Pause</button>
+        <button id="matchResumeBtn" class="menuBtn">Resume</button>
+        <button id="matchResetBtn" class="menuBtn">Reset</button>
+        <button id="matchEndBtn" class="menuBtn">End</button>
+      </div>
+    </div>
+    <div class="groupCodeLine">Group: <code id="groupCodeText">connecting…</code> <button class="menuBtn" id="copyGroupLinkBtn" style="display:none;padding:4px 10px;margin:0;font-size:11px;">Copy link</button> - replay saves here when the match ends. <a href="replays">Browse all replays</a></div>
+  </div>
+</div>
+
+<!-- Settings: textures + this-browser's profile (name/TagPro login), opened
+     by #menuSettingsBtn. Nothing here is leader-gated or room-specific -
+     it's the same per-person stuff main.js's mode-select identity row and
+     texturePackPicker.js already are elsewhere. -->
+<div id="settingsPanel" class="hidden">
+  <div class="sidePanelCard">
+    <div class="sidePanelHeader"><h3>Settings</h3><button id="settingsPanelCloseBtn" class="panelCloseBtn">&times;</button></div>
+    <div class="sidePanelBody">
+      <div class="makerRow">
+        <h4>Profile</h4>
+        <div id="menuIdentityRow" class="identityRow">
+          <div class="identityNameCol">
+            <div class="identityReserved" id="menuDisplayNameReserved"></div>
+            <input id="menuDisplayNameInput" class="identityInput" placeholder="Someball" maxlength="20" autocomplete="off">
+          </div>
+          <button id="menuTagproLoginBtn" class="identityToggle" type="button" title="Log in with TagPro">Login</button>
+        </div>
+      </div>
+      <div class="makerRow">
+        <h4>Textures</h4>
+        <div id="texturePackPicker"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Map/settings editor for whichever of the two cards above was clicked -
+     content moved here as-is from the old Settings tab; still edits the
+     live room directly (Apply-per-row, presets, settings code) rather than
+     a separate per-profile draft yet. -->
+<div id="profileEditModal" class="hidden">
+  <div class="sidePanelCard">
+    <div class="sidePanelHeader"><h3 id="profileEditTitle">Edit</h3><button id="profileEditCloseBtn" class="panelCloseBtn">&times;</button></div>
+    <div class="sidePanelBody">
+      <!-- No separate "Apply" button here - every field below sends its own
+           edit straight to this profile as you make it (and live too, if
+           the room is currently in the phase this profile governs - see
+           engine/matchManager.js's setProfile). To restart the live match
+           on whatever's now configured, use Match Control's own Reset. -->
+
       <div class="makerRow">
         <h4>Presets <span class="controlHint">(saved in this browser)</span></h4>
         <div class="controlRow" id="controlPresetRow"></div>
@@ -661,19 +744,15 @@
         <div class="fileStatus" id="controlSaveStateStatus"></div>
       </div>
     </div>
-
-    <div id="texturesPanel" class="menuPanel hidden">
-      <div id="texturePackPicker"></div>
-    </div>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.5.2/pixi.min.js" defer></script>
 
 <script src="shared/Box2dWeb-2.1.a.3.js" defer></script>
+<script src="shared/box2dBody.js" defer></script>
 <script src="shared/forceFields.js" defer></script>
 <script src="shared/movement.js" defer></script>
-<script src="shared/overlayCoords.js" defer></script>
 <script src="shared/replayFormat.js" defer></script>
 
 <script src="engine/eventBus.js" defer></script>
@@ -708,37 +787,26 @@
 <script src="client/quadrantCoords.js" defer></script>
 <script src="client/particles.js" defer></script>
 
-<script src="client/state/engineClock.js" defer></script>
-<script src="client/state/gameState.js" defer></script>
-<script src="client/state/settingsState.js" defer></script>
-<script src="client/state/tileCatalog.js" defer></script>
-<script src="client/state/localSettings.js" defer></script>
+<script src="client/state.js" defer></script>
 
-<script src="client/net/packetSchema.js" defer></script>
-<script src="client/net/packetRouter.js" defer></script>
+<script src="client/net.js" defer></script>
 
 <script src="client/physicsWorld.js" defer></script>
 <script src="client/entityReconciler.js" defer></script>
 <script src="client/movement.js" defer></script>
 <script src="client/loop.js" defer></script>
+<script src="client/predict/localInputApplier.js" defer></script>
 
 <script src="client/render/renderer.js" defer></script>
 <script src="client/render/spriteAtlas.js" defer></script>
 <script src="client/render/wallAutotile.js" defer></script>
 <script src="client/render/playerRenderer.js" defer></script>
 <script src="client/render/eggballRenderer.js" defer></script>
-<script src="client/render/overlayRenderer.js" defer></script>
 <script src="client/render/camera.js" defer></script>
 
-<script src="client/input/keyboard.js" defer></script>
-<script src="client/input/cameraControls.js" defer></script>
-<script src="client/input/fireInput.js" defer></script>
+<script src="client/inputs.js" defer></script>
 
-<script src="client/app/appEvents.js" defer></script>
-<script src="client/app/actions.js" defer></script>
-<script src="client/app/spriteSheetLoader.js" defer></script>
-<script src="client/app/packetApplier.js" defer></script>
-<script src="client/app/stateWiring.js" defer></script>
+<script src="client/app.js" defer></script>
 
 <script src="client/ui/hud.js" defer></script>
 <script src="client/ui/schemaForm.js" defer></script>
@@ -748,6 +816,7 @@
 <script src="local/localTexturePrefs.js" defer></script>
 <script src="shared/texturePackPicker.js" defer></script>
 <script src="local/localReplayRecorder.js" defer></script>
+<script src="local/hostSession.js" defer></script>
 <script src="local/localTransport.js" defer></script>
 <script src="local/webrtcTransport.js" defer></script>
 <script src="local/activeTransport.js" defer></script>
