@@ -34,7 +34,14 @@ var actions = {
   joinGame:  function () { socket.send(packetSchema.joinGame()); },
   leaveGame: function () { socket.send(packetSchema.leaveGame()); },
 
-  chat: function (text) { socket.send(packetSchema.chat(text)); },
+  // target: 'all' | 'team' - see client/inputs.js's teamChat keybind.
+  chat: function (text, target) { socket.send(packetSchema.chat(text, target)); },
+
+  // Live flair change - re-sends the same 'identify' packet type a fresh
+  // join uses (see local/hostSession.js's handleOutgoing), just with only
+  // flairIndex set, so it applies immediately without needing to leave and
+  // rejoin. Called by local/flairPicker.js whenever already connected.
+  setFlair: function (flairIndex) { socket.send(packetSchema.setFlair(flairIndex)); },
 
   ping: function () { socket.send(packetSchema.ping()); },
 
@@ -415,8 +422,11 @@ var packetApplier = {
     appEvents.emit('error', packet.message);
   },
 
+  // Hands the whole packet through (name/text plus target/team/authed/
+  // leader) - client/ui/hud.js's appendChatMessage does the actual
+  // tagpro-style color-coding, this is pure routing.
   chat: function (packet) {
-    appEvents.emit('chat:message', packet.name, packet.text);
+    appEvents.emit('chat:message', packet);
   },
 
   // Gets back to a clean mode-select screen once the connection this
@@ -559,6 +569,14 @@ function wireGameStateEvents() {
   gameEvents.on('player:flagChanged', function (player) {
     if (player.hasFlag) renderer.attachFlag(player.id, player.flagId);
     else renderer.detachFlag(player.id);
+  });
+
+  // Someone already on screen picked a different flair mid-life (local/
+  // flairPicker.js's live update) - initial flair for a freshly-created
+  // player is drawn straight from player.flairIndex by drawPlayer itself,
+  // so this only ever fires for an in-place change.
+  gameEvents.on('player:flairChanged', function (player) {
+    renderer.updatePlayerFlair(player.id);
   });
 
   gameEvents.on('player:jukeJuiceChanged', function (player) {

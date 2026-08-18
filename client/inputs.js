@@ -290,6 +290,27 @@ function sendInput() {
   localInputApplier.send(keyState);
 }
 
+// Which audience Enter will send to right now - 'all' unless chat:focus was
+// last raised with 'team' (client/inputs.js's own teamChat keybind below,
+// or client/ui/hud.js triggering it some other way in the future). Reset
+// back to 'all' every time the input closes so a leftover team-chat isn't
+// silently still armed the next time Enter alone opens it.
+var chatTarget = 'all';
+
+// Border/text color while composing - team-colored to match whichever
+// audience is about to receive it, same signal tagpro.js's own chat input
+// gives (this file's chatColorFor mirrors that handler's red/blue pastel
+// pair). 'all' (or a spectator with no team to color by) just uses the
+// theme's normal accent.
+function chatColorFor(target) {
+  if (target === 'team') {
+    var me = game.myId !== null ? getPlayer(game.myId) : null;
+    if (me && me.team === 'red') return '#FFB5BD';
+    if (me && me.team === 'blue') return '#CFCFFF';
+  }
+  return '';
+}
+
 // Enter/Escape on #chatInput itself, not the global keydown handler below -
 // blockedByTyping() deliberately lets non-arrow keys pass through untouched
 // while chatInput is focused (so typed characters land in the field
@@ -297,16 +318,38 @@ function sendInput() {
 // listener here rather than another branch in that handler.
 function initChatInput() {
   var input = document.getElementById('chatInput');
+  var log   = document.getElementById('chatLog');
   if (!input) return;
 
-  appEvents.on('chat:focus', function () { input.focus(); });
+  // Only while actually composing does the log show its full scrollback -
+  // collapsing it also re-hides anything that already passed its 20s fade
+  // (client/ui/hud.js's appendChatMessage), same "history only while
+  // you're typing" behavior real TagPro's own chat has.
+  function collapseChatLog() {
+    if (!log) return;
+    log.classList.remove('expanded');
+    var expired = log.querySelectorAll('.chatRow[data-expired="true"]');
+    for (var i = 0; i < expired.length; i++) expired[i].classList.add('chatRowFaded');
+  }
+
+  appEvents.on('chat:focus', function (target) {
+    chatTarget = target === 'team' ? 'team' : 'all';
+    var color = chatColorFor(chatTarget);
+    input.style.color = color;
+    input.style.borderColor = color || '';
+    input.placeholder = chatTarget === 'team' ? 'Team chat - Press Enter to send' : 'Press Enter to chat';
+    if (log) log.classList.add('expanded');
+    input.focus();
+  });
 
   input.addEventListener('keydown', function (event) {
     if (event.key === 'Enter') {
       var text = input.value.trim();
       input.value = '';
       input.blur();
-      if (text) actions.chat(text);
+      if (text) actions.chat(text, chatTarget);
+      chatTarget = 'all';
+      collapseChatLog();
       return;
     }
     if (event.key === 'Escape') {
@@ -317,6 +360,8 @@ function initChatInput() {
       event.stopPropagation();
       input.value = '';
       input.blur();
+      chatTarget = 'all';
+      collapseChatLog();
     }
   });
 }
@@ -334,7 +379,13 @@ function initKeyboardInput() {
 
     if (isActionKey(event.key, 'chat') && !typingInField()) {
       event.preventDefault();
-      appEvents.emit('chat:focus');
+      appEvents.emit('chat:focus', 'all');
+      return;
+    }
+
+    if (isActionKey(event.key, 'teamChat') && !typingInField()) {
+      event.preventDefault();
+      appEvents.emit('chat:focus', 'team');
       return;
     }
 

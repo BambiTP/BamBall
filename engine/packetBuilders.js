@@ -38,6 +38,7 @@ function serializePlayer(player) {
     tagpro:      player.tagpro,
     rollingBomb: player.rollingBomb,
     jukeJuice:   player.jukeJuice,
+    flairIndex:  player.flairIndex ?? null,
   };
 }
 
@@ -193,8 +194,19 @@ const packetBuilders = {
     return { type: 'tileSettingsChanged', x, y, settings };
   },
 
+  // target: 'all' | 'team' - who this was broadcast to (see local/
+  // hostSession.js's handleOutgoing 'chat' case for the routing itself;
+  // this builder only shapes the packet, same division as every other
+  // entry here). team/authed/leader ride along so the client can
+  // color-code the sender the way tagpro.js's own chat handler does
+  // (team-tinted name, green for a leader, a checkmark for a verified
+  // TagPro login) without having to cross-reference the roster.
   chat(data) {
-    return { type: 'chat', id: data.id, name: data.name, text: data.text };
+    return {
+      type: 'chat', id: data.id, name: data.name, text: data.text,
+      target: data.target || 'all', team: data.team || null,
+      authed: !!data.authed, leader: !!data.leader,
+    };
   },
 
   // matchStateChanged carries no payload; the builder reads the trusted

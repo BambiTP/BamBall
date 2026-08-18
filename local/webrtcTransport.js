@@ -41,7 +41,7 @@ var webrtcTransport = (function () {
 
   var LOCAL_CLIENT_ID = 1; // this tab's own local player, same convention as localTransport.js
   var hostClient  = { team: 'spectator', muted: false };
-  var hostAccount = { display_name: 'Host', authed: false };
+  var hostAccount = { display_name: 'Host', authed: false, flairIndex: null };
 
   // ---- PEER-only state -------------------------------------------------
   var myPeerId = null;
@@ -115,6 +115,9 @@ var webrtcTransport = (function () {
     // TagPro token still goes through the same verifyToken check a peer's
     // would, rather than trusting localStorage unconditionally.
     if (identity && identity.name) hostAccount.display_name = identity.name;
+    if (identity && (typeof identity.flairIndex === 'number' || identity.flairIndex === null)) {
+      hostAccount.flairIndex = identity.flairIndex;
+    }
     if (identity && identity.tagpro && identity.tagpro.token) {
       var valid = await TagproAuth.verifyToken(WORKER_URL, identity.tagpro);
       if (valid) { hostAccount.authed = true; hostAccount.display_name = identity.tagpro.reservedName; }
@@ -255,8 +258,8 @@ var webrtcTransport = (function () {
         // This peer's one-time self-introduction, now that the channel is
         // definitely open (we just received the host's first message on
         // it) - see hostSession.js's 'identify' case, host side.
-        if (identity && (identity.name || identity.tagpro)) {
-          dc.send(JSON.stringify({ type: 'identify', name: identity.name, tagpro: identity.tagpro }));
+        if (identity && (identity.name || identity.tagpro || typeof identity.flairIndex === 'number')) {
+          dc.send(JSON.stringify({ type: 'identify', name: identity.name, tagpro: identity.tagpro, flairIndex: identity.flairIndex ?? null }));
         }
         onJoined();
         return;

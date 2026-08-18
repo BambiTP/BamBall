@@ -28,6 +28,15 @@ class Renderer {
     this.camera = { x: 0, y: 0, zoom: 1 };
     this.layers = {};
 
+    // Screen-space UI, a sibling of this.world rather than a child of it -
+    // this.world is what the camera pans/zooms (render/camera.js), so
+    // anything parented there drifts with gameplay. The scoreboard (see
+    // updateScoreboard below) needs to stay pinned to the viewport instead,
+    // the same way tagpro.js's own tagpro.ui.sprites.redScore/blueScore
+    // are parented straight onto its top-level UI layer, never the world.
+    this.uiLayer = null;
+    this.scoreText = null;
+
     this.renderLookup = {};
     for (const sd of renderData) {
       this.renderLookup[sd.id] = sd;
@@ -52,6 +61,9 @@ class Renderer {
     await this.app.init({ resizeTo: this.canvas, backgroundAlpha: 0, antialias: false, powerPreference: 'low-power' });
     this.canvas.appendChild(this.app.canvas);
     this.app.stage.addChild(this.world);
+
+    this.uiLayer = new PIXI.Container();
+    this.app.stage.addChild(this.uiLayer);
 
     // The canvas follows the viewport, and the world's scale is derived
     // from the canvas size (render/camera.js viewScale), so a resize - or a
@@ -337,6 +349,48 @@ class Renderer {
     // exactly the allocation this method just went to trouble over.
   }
 
+  // Big red/blue score numbers straddling top-center of the viewport -
+  // matches real TagPro's own in-canvas scoreboard (tagpro.js's
+  // tagpro.ui.sprites.redScore/blueScore: 40pt bold Arial, 0.8 alpha,
+  // #FF0000/#1414FF, meeting in the middle) rather than a DOM pill. Built
+  // once, lazily, the first time a score actually arrives.
+  initScoreboard() {
+    if (this.scoreText || !this.uiLayer) return;
+
+    const style = (fill) => ({
+      fontFamily: 'Arial', fontSize: 40, fontWeight: 'bold', fill,
+      stroke: { color: 0x000000, width: 3 },
+    });
+
+    const red  = new PIXI.Text({ text: '0', style: style(0xff0000) });
+    const blue = new PIXI.Text({ text: '0', style: style(0x1414ff) });
+    red.alpha = blue.alpha = 0.8;
+    red.anchor.set(1, 0);  // right-aligned - grows leftward away from center
+    blue.anchor.set(0, 0); // left-aligned  - grows rightward away from center
+
+    this.uiLayer.addChild(red, blue);
+    this.scoreText = { red, blue };
+  }
+
+  // Re-centers the two numbers on the current viewport width - called every
+  // frame (see the ticker below) rather than only on 'resize', so it stays
+  // correct through camera.js's own viewport-driven resize path too without
+  // this needing its own separate hook into it.
+  layoutScoreboard() {
+    if (!this.scoreText) return;
+    const centerX = this.app.renderer.width / 2;
+    this.scoreText.red.position.set(centerX - 40, 14);
+    this.scoreText.blue.position.set(centerX + 40, 14);
+  }
+
+  updateScoreboard(scores) {
+    this.initScoreboard();
+    if (!this.scoreText) return; // renderer not booted yet - main.js's initHud() can fire before renderer.init()
+    this.scoreText.red.text  = String(scores?.red  ?? 0);
+    this.scoreText.blue.text = String(scores?.blue ?? 0);
+    this.layoutScoreboard();
+  }
+
   start() {
     this.createMap();
 
@@ -383,6 +437,7 @@ class Renderer {
         }
 
         this.updateEggball();
+        this.layoutScoreboard();
 
         // Rolling bomb's flash breathes via a sine wave on alpha instead of
         // being animated through the particle system.

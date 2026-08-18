@@ -88,17 +88,10 @@
   /* ---------------------------------------------------------------- HUD */
   #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 
-  #hud { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); pointer-events: none; text-align: center; }
-  #hudScore {
-    font-family: var(--font-display);
-    font-size: 26px; font-weight: 700; letter-spacing: 0.5px;
-    padding: 6px 22px; border-radius: 999px;
-    background: rgba(14,17,28,0.72);
-    border: 1px solid var(--border-2);
-    box-shadow: var(--shadow-md);
-    backdrop-filter: blur(8px);
-  }
-  #hudTimer { margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+  /* top:64px - clears the canvas-drawn score (render/renderer.js's
+     updateScoreboard: 40pt digits starting at y=14) sitting above it. */
+  #hud { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); pointer-events: none; text-align: center; }
+  #hudTimer { font-size: 13px; font-weight: 600; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
   #hudPing { margin-top: 2px; font-size: 10px; color: var(--text-faint); }
 
   #hint {
@@ -124,9 +117,24 @@
     max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px;
     margin-bottom: 6px; padding: 8px 10px; font-size: 12.5px;
     background: rgba(14,17,28,0.55); border-radius: var(--radius-sm);
+    transition: max-height 0.15s;
   }
+  /* While actually composing a message (client/inputs.js's chat:focus),
+     the log grows to show its full scrollback - same "history only while
+     you're actively typing" behavior tagpro.js's own chat handler has -
+     and collapses back once you send/cancel, hiding anything already past
+     its 20s fade (client/ui/hud.js's appendChatMessage). */
+  #chatLog.expanded { max-height: 260px; overflow-y: auto; outline: 1px solid var(--border-2); }
   .chatRow { word-break: break-word; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
-  .chatRow .chatName { color: var(--accent); font-weight: 700; margin-right: 5px; }
+  .chatRow.chatRowFaded { display: none; }
+  .chatRow .chatName { font-weight: 700; margin-right: 5px; }
+  /* Team-restricted messages get a colored left rule instead of recoloring
+     the whole row - only the receiving team ever sees these at all
+     (local/hostSession.js's broadcastToTeam), so the accent is enough of a
+     "this was team-only" cue without fighting the sender-color name. */
+  .chatRow.chatRow--team { border-left: 2px solid var(--border-2); padding-left: 6px; margin-left: -8px; }
+  .chatRow.chatRow--team.chatRow--red  { border-left-color: var(--red-team); }
+  .chatRow.chatRow--team.chatRow--blue { border-left-color: var(--blue-team); }
   #chatInput {
     width: 100%; padding: 9px 12px; background: rgba(14,17,28,0.72); color: var(--text);
     border: 1px solid var(--border-2); border-radius: var(--radius-sm); font-size: 12.5px;
@@ -134,6 +142,34 @@
   }
   #chatInput::placeholder { color: var(--text-faint); }
   #chatInput:focus { outline: none; border-color: var(--accent); }
+
+  /* ------------------------------------------------------- Flair picker */
+  #flairPickerModal {
+    position: absolute; inset: 0; z-index: 460; display: flex; align-items: center; justify-content: center;
+    background: rgba(6,7,12,0.72); backdrop-filter: blur(4px);
+  }
+  #flairPickerCard {
+    width: 100%; max-width: 480px; max-height: 78vh; overflow: auto; padding: 22px;
+    border-radius: var(--radius-lg); background: linear-gradient(180deg, var(--surface), var(--bg-1));
+    border: 1px solid var(--border-2); box-shadow: var(--shadow-lg); animation: modalIn 0.18s ease-out;
+  }
+  #flairPickerGrid {
+    display: grid; grid-template-columns: repeat(auto-fill, 30px); gap: 6px; margin-top: 4px;
+  }
+  .flairIcon {
+    width: 30px; height: 30px; padding: 0; border-radius: 6px; border: 2px solid transparent;
+    background-color: var(--surface-2); cursor: pointer; display: flex; align-items: center; justify-content: center;
+    position: relative; transition: border-color 0.12s, background-color 0.12s;
+  }
+  .flairIcon:hover { border-color: var(--border-2); }
+  .flairIcon.selected { border-color: var(--accent); background-color: var(--accent-soft); }
+  .flairIcon::before {
+    content: ''; display: block; width: 16px; height: 16px;
+    background-image: url('assets/sprites/flair.png'); background-repeat: no-repeat;
+    background-position: calc(var(--flair-col, 0) * -18px) calc(var(--flair-row, 0) * -18px);
+  }
+  .flairIconNone::before { content: none; }
+  .flairIconNone::after { content: '\00d7'; color: var(--text-faint); font-size: 15px; font-weight: 700; }
 
   /* ----------------------------------------------------------- Loading */
   #loadingOverlay {
@@ -527,6 +563,9 @@
       <button id="tagproLoginBtn" class="identityToggle" type="button" title="Log in with TagPro">Login</button>
     </div>
 
+    <div class="titleSectionLabel">Flair</div>
+    <button id="flairPickerBtn" class="menuBtn" type="button" style="width:100%;margin:0;">Choose Flair</button>
+
     <div class="titleActions">
       <button id="playSoloBtn" class="modeSelectBtn">Play Solo</button>
       <button id="createGroupBtn" class="modeSelectBtn">Create Group</button>
@@ -589,8 +628,11 @@
 </div>
 <div id="loadingOverlay" class="hidden"><div id="loadingSpinner"></div><div id="loadingText">Loading BamBall…</div></div>
 <div id="viewport"></div>
+<!-- The red/blue score itself is drawn on the canvas now, straddling
+     top-center - see client/render/renderer.js's updateScoreboard, styled
+     to match real TagPro's own in-game scoreboard. This DOM strip only
+     holds the timer/ping underneath it. -->
 <div id="hud">
-  <div id="hudScore">Red 0 - 0 Blue</div>
   <div id="hudTimer">-:--</div>
   <div id="hudPing">-- ms</div>
 </div>
@@ -679,10 +721,24 @@
         </div>
       </div>
       <div class="makerRow">
+        <h4>Flair</h4>
+        <button id="menuFlairPickerBtn" class="menuBtn" type="button">Choose Flair</button>
+      </div>
+      <div class="makerRow">
         <h4>Textures</h4>
         <div id="texturePackPicker"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Flair picker: one shared modal, opened from either the button above
+     (mid-session, via Esc -> Settings) or #flairPickerBtn on the homepage
+     (before any room exists) - see local/flairPicker.js. -->
+<div id="flairPickerModal" class="hidden">
+  <div id="flairPickerCard">
+    <div class="sidePanelHeader"><h3>Choose Flair</h3><button id="flairPickerCloseBtn" class="panelCloseBtn">&times;</button></div>
+    <div id="flairPickerGrid"></div>
   </div>
 </div>
 
@@ -840,6 +896,7 @@
 <script src="local/localPresets.js" defer></script>
 <script src="local/controlPanel.js" defer></script>
 <script src="local/tagproLogin.js" defer></script>
+<script src="local/flairPicker.js" defer></script>
 <script src="local/main.js" defer></script>
 </body>
 </html>

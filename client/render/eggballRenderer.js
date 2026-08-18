@@ -32,6 +32,18 @@ Object.assign(Renderer.prototype, {
   // syncEggball), fine-grained enough that interpolation isn't needed the
   // way it is for players (whose updates are comparatively sparse).
   updateEggball() {
+    // game.eggball defaults to {carrierId: null, x: 0, y: 0} (client/state.js)
+    // and only gets real coordinates once a server 'joined'/'eggballChanged'
+    // packet actually carries them - which never happens outside Eggball
+    // mode. Without this gate, every non-Eggball map/mode rendered that
+    // default straight through as a free-flying egg sitting at world (0,0),
+    // the map's top-left corner, forever.
+    if (!settingsState.physics.eggballEnabled) {
+      if (this.eggballSprite) this.eggballSprite.visible = false;
+      this.clearEggIcon();
+      return;
+    }
+
     this.initEggballSprite();
     const egg = game.eggball;
 

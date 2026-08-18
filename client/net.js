@@ -33,8 +33,18 @@ var packetSchema = {
     return { type: 'ping', t: Date.now() };
   },
 
-  chat(text) {
-    return { type: 'chat', text };
+  // target: 'all' | 'team' - see local/hostSession.js's handleOutgoing
+  // 'chat' case for the routing this actually drives.
+  chat(text, target) {
+    return { type: 'chat', text, target: target === 'team' ? 'team' : 'all' };
+  },
+
+  // Reuses the 'identify' packet type (see hostSession.js) with only
+  // flairIndex set - a name/tagpro-token re-send would be redundant since
+  // those never change mid-session, so this is a lighter, standalone
+  // update for the one field that can.
+  setFlair(flairIndex) {
+    return { type: 'identify', flairIndex: (typeof flairIndex === 'number') ? flairIndex : null };
   },
 
   input(left, right, up, down) {

@@ -85,7 +85,8 @@ async function start(bootFn) {
     var data = await spriteSheetLoader.fetch();
     var manifestPromise = fetch(data.manifestUrl).then(function (res) { return res.json(); });
     var texturesPromise = renderer.fetchTextures({ packed: data.sheetUrl, walls: data.wallsUrl });
-    var results = await Promise.all([manifestPromise, texturesPromise]);
+    var flairPromise = renderer.ensureFlairSheet(); // shared flair.png - not part of any texture pack
+    var results = await Promise.all([manifestPromise, texturesPromise, flairPromise]);
     renderer.applyManifest(results[0]); // slices + bakes the full sprite atlas
     spriteSheetLoader.loadedHash = data.hash || null;
     await nextFrame();
@@ -196,6 +197,7 @@ function initModeSelect() {
   initIdentityUI();
   initIdentityUI({ nameInputId: 'linkJoinNameInput', loginBtnId: 'linkJoinLoginToggle', reservedId: 'linkJoinReserved' });
   initDuplicateTabModal();
+  initFlairPicker();
 
   if (linkJoinModal && linkJoinBtn) {
     linkJoinBtn.addEventListener('click', function () {

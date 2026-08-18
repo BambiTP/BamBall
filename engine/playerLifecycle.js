@@ -101,7 +101,7 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
       emitter.emit('update', player);
     },
 
-    spawnPlayer(id, team, name, authed) {
+    spawnPlayer(id, team, name, authed, flairIndex) {
       const teamStr = (team === 2 || team === 'blue') ? 'blue' : 'red';
       const spawns  = gameState.spawnPool[teamStr];
       if (!spawns?.length) { console.error(`spawnPool not ready for "${teamStr}"`); return null; }
@@ -118,6 +118,11 @@ function makePlayerLifecycle(gameState, physicsHelpers, physicsWorld, config, em
         id,
         name: name ?? `Player ${id}`,
         authed: !!authed,
+        // A freely-chosen index into the shared flair spritesheet (assets/
+        // sprites/flair.png) - see local/flairPicker.js. Purely cosmetic,
+        // never tied to TagPro account verification (unlike `authed`
+        // above), so any player can pick any icon. null = no flair.
+        flairIndex: (typeof flairIndex === 'number') ? flairIndex : null,
         team: teamStr,
         body,
         isPlayer: true,

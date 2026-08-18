@@ -39,6 +39,7 @@ function teamCode(team) {
 //   jj = jukeJuice    (only present when 1)
 //   kl = kothLeader   (only present when 1) - currently leading a koth pup contest
 //   au = authed       (only present when 1) - host-verified TagPro login (see local/webrtcTransport.js)
+//   fl = flairIndex   (always present, null when no flair) - see local/flairPicker.js
 function serializeEntity(player) {
   const entity = {
     id: player.id,
@@ -53,6 +54,7 @@ function serializeEntity(player) {
     ms: round2(player.maxSpeed),
     s:  player.snapCount || 0,
     f:  (player.hasFlag && player.hasFlag.flagId) || 0,
+    fl: (player.flairIndex ?? null),
   };
 
   if (player.dead)        entity.d  = 1;
@@ -66,7 +68,7 @@ function serializeEntity(player) {
   return entity;
 }
 
-const NUMERIC_KEYS = ['x', 'y', 'a', 'lx', 'ly', 'ac', 'ms', 't', 's', 'n', 'f'];
+const NUMERIC_KEYS = ['x', 'y', 'a', 'lx', 'ly', 'ac', 'ms', 't', 's', 'n', 'f', 'fl'];
 const FLAG_KEYS    = ['d', 'tp', 'rb', 'jj', 'kl', 'mf'];
 function diffFields(previous, current) {
   if (!previous) return current;

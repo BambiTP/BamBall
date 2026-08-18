@@ -31,9 +31,13 @@ function renderHudTimer() {
   }
 }
 
+// Drawn on the canvas itself now (render/renderer.js's updateScoreboard),
+// matching real TagPro's own in-game scoreboard - see that method's header
+// comment. renderer may not exist yet the very first time this fires
+// (initHud() runs before main.js creates it) - updateScoreboard no-ops
+// safely until it does, same guard eggballRenderer's lazy init uses.
 function updateHudScore(scores) {
-  var el = document.getElementById('hudScore');
-  if (el) el.textContent = 'Red ' + scores.red + ' - ' + scores.blue + ' Blue';
+  if (typeof renderer !== 'undefined' && renderer) renderer.updateScoreboard(scores);
 }
 
 // Round-trip time to whoever's authoritative for this session - the host's
@@ -48,25 +52,48 @@ function updateHudPing(ms) {
 }
 
 var CHAT_LOG_MAX_ROWS = 50; // trims oldest rows so a long match's chat can't grow the DOM forever
+var CHAT_FADE_MS = 20000; // matches tagpro.js's own chat handler (setTimeout(..., 2e4))
 
-function appendChatMessage(name, text) {
+// packet: engine/packetBuilders.js's chat() shape - { name, text, target,
+// team, authed, leader }. Color-codes the sender the way tagpro.js's own
+// chat handler does (team-tinted name, green for a leader, a checkmark for
+// a verified TagPro login) and, for a team-restricted message, adds a
+// team-colored left rule (see index.html's .chatRow--team CSS) - only the
+// receiving team ever gets one of these at all (local/hostSession.js's
+// broadcastToTeam), so there's no need to also recolor the message text.
+function appendChatMessage(packet) {
   var log = document.getElementById('chatLog');
   if (!log) return;
 
   var row = document.createElement('div');
   row.className = 'chatRow';
+  if (packet.target === 'team' && (packet.team === 'red' || packet.team === 'blue')) {
+    row.classList.add('chatRow--team', 'chatRow--' + packet.team);
+  }
 
-  if (name) {
+  if (packet.name) {
     var nameEl = document.createElement('span');
     nameEl.className = 'chatName';
-    nameEl.textContent = name + ':';
+    nameEl.style.color = packet.team === 'red' ? 'var(--red-team)'
+      : packet.team === 'blue' ? 'var(--blue-team)'
+      : packet.leader ? 'var(--go)'
+      : 'var(--accent)';
+    nameEl.textContent = (packet.authed ? '✓ ' : '') + packet.name + ':';
     row.appendChild(nameEl);
   }
-  row.appendChild(document.createTextNode(text));
+  row.appendChild(document.createTextNode(packet.text));
 
   log.appendChild(row);
   while (log.children.length > CHAT_LOG_MAX_ROWS) log.removeChild(log.firstChild);
   log.scrollTop = log.scrollHeight;
+
+  // Fades out of the collapsed view after CHAT_FADE_MS, same as real
+  // TagPro's chat log - client/inputs.js's chat-focus/blur handling is what
+  // actually toggles #chatLog's 'expanded' class (showing/hiding these).
+  setTimeout(function () {
+    row.dataset.expired = 'true';
+    if (!log.classList.contains('expanded')) row.classList.add('chatRowFaded');
+  }, CHAT_FADE_MS);
 }
 
 function initHud() {

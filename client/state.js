@@ -127,6 +127,7 @@ function createPlayer(entity) {
     id:   entity.id,
     name: entity.n || ('Player ' + entity.id),
     authed: !!entity.au, // true only once the host has verified their TagPro login token - see webrtcTransport.js's handleOutgoingFor 'identify' case
+    flairIndex: (entity.fl != null) ? entity.fl : null, // see local/flairPicker.js
     team: teamFromCode(entity.t),
 
     x: entity.x, y: entity.y,
@@ -184,6 +185,10 @@ function removePlayerLocal(id) {
 function applyEntityFlags(player, entity) {
   if (entity.n !== undefined) player.name = entity.n;
   if (entity.au !== undefined) player.authed = !!entity.au;
+  if (entity.fl !== undefined && entity.fl !== player.flairIndex) {
+    player.flairIndex = entity.fl;
+    gameEvents.emit('player:flairChanged', player);
+  }
   if (entity.t !== undefined) player.team = teamFromCode(entity.t);
   if (entity.ac !== undefined) player.accel = entity.ac;
   if (entity.ms !== undefined) player.maxSpeed = entity.ms;
@@ -526,8 +531,14 @@ var LOCAL_SETTINGS_DEFAULTS = {
     zoomIn:   ['=', '+'],
     zoomOut:  ['-'],
     pause:    [], // unbound by default - opt-in, leader-only in practice (server rejects it for anyone else)
+    teamChat: ['t'],
   },
   particles:    true,
+  // Index into the shared flair spritesheet (assets/sprites/flair.png) -
+  // see local/flairPicker.js. null = no flair. A plain per-browser
+  // preference like the keybinds above it, not gameplay-visible state, so
+  // it lives here rather than in settingsState.
+  flairIndex: null,
 };
 
 var LOCAL_SETTINGS_STORAGE_KEY = 'grabtag_settings';
@@ -539,6 +550,7 @@ function mergeLocalSettings(stored) {
   var merged = {
     keys: {},
     particles: LOCAL_SETTINGS_DEFAULTS.particles,
+    flairIndex: LOCAL_SETTINGS_DEFAULTS.flairIndex,
   };
 
   var action;
@@ -561,6 +573,8 @@ function mergeLocalSettings(stored) {
   }
 
   if (typeof stored.particles === 'boolean') merged.particles = stored.particles;
+
+  if (typeof stored.flairIndex === 'number' && stored.flairIndex >= 0) merged.flairIndex = stored.flairIndex;
 
   return merged;
 }

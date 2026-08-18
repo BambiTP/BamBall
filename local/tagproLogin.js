@@ -29,8 +29,14 @@ function saveDisplayNamePref(name) {
 function currentIdentity() {
   var tagpro = TagproAuth.getIdentity();
   var typedName = loadDisplayNamePref().trim();
-  if (tagpro && typedName === tagpro.reservedName) return { name: tagpro.reservedName, tagpro: tagpro };
-  return { name: typedName || null, tagpro: null };
+  // flairIndex is a plain per-browser preference (local/flairPicker.js),
+  // never tied to the TagPro-verified name/token above it - unlike those,
+  // it always rides along regardless of whether the rest of this identity
+  // is verified or freely typed.
+  var flairIndex = (typeof localSettings !== 'undefined' && typeof localSettings.flairIndex === 'number')
+    ? localSettings.flairIndex : null;
+  if (tagpro && typedName === tagpro.reservedName) return { name: tagpro.reservedName, tagpro: tagpro, flairIndex: flairIndex };
+  return { name: typedName || null, tagpro: null, flairIndex: flairIndex };
 }
 
 // Every initIdentityUI() call registers its render() here - both the

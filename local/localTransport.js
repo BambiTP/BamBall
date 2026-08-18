@@ -19,7 +19,7 @@ var localTransport = (function () {
   var roomCode = null; // minted by the Worker at boot - see requestRoomCode()
   var localId = 1;
   var client  = { team: 'spectator' };
-  var account = { display_name: 'Player' };
+  var account = { display_name: 'Player', flairIndex: null };
 
   // Every room gets a unique, permanent code from the Worker (confirmed
   // requirement) - it's what a finished replay gets stored/found under
@@ -80,6 +80,13 @@ var localTransport = (function () {
   // real client does against a real server.
   async function boot() {
     requestRoomCode(); // fire-and-forget in parallel - never blocks the map/game from loading
+
+    // Solo still has a real (single-player) room underneath, and the same
+    // flair picker (local/flairPicker.js) works on this build too - carry
+    // over whatever this browser already has saved.
+    if (typeof localSettings !== 'undefined' && typeof localSettings.flairIndex === 'number') {
+      account.flairIndex = localSettings.flairIndex;
+    }
 
     var res    = await fetch(GAME_BASE_PATH + 'assets/maps/default.json');
     var mapDoc = await res.json();

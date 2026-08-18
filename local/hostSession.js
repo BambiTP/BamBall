@@ -202,6 +202,18 @@ function createHostSession(gi, deps) {
     for (var id in peers) safeSend(peers[id], packet);
   }
 
+  // Team-restricted chat's own broadcast - only clients currently on that
+  // team receive it (the sender included, since they're on it too). Still
+  // goes through the recorder like every other broadcast: a replay viewer
+  // watches the whole match after the fact, not from inside either team's
+  // restricted view, so team chat is worth keeping in that record the same
+  // as everything else.
+  function broadcastToTeam(team, packet) {
+    if (localEntry && localEntry.client.team === team) localEntry.dispatch(packet);
+    if (recorder) recorder.recordBroadcast(packet);
+    for (var id in peers) { if (peers[id].client.team === team) safeSend(peers[id], packet); }
+  }
+
   function broadcastRoster() {
     broadcastToAll(packetBuilders.roomState(buildRoster()));
     if (deps.onRosterChanged) deps.onRosterChanged();
@@ -282,7 +294,7 @@ function createHostSession(gi, deps) {
       gi.gameHelpers.removePlayer(clientId);
       c.dispatch({ type: 'leftGame' });
       if (team === 'red' || team === 'blue') {
-        var respawned = gi.gameHelpers.spawnPlayer(clientId, team, c.account.display_name, c.account.authed);
+        var respawned = gi.gameHelpers.spawnPlayer(clientId, team, c.account.display_name, c.account.authed, c.account.flairIndex);
         c.dispatch({ type: 'joinedGame', player: serializePlayer(respawned) });
       }
       broadcastRoster();
@@ -297,7 +309,7 @@ function createHostSession(gi, deps) {
       c.dispatch({ type: 'error', message: 'select red or blue before joining the game' });
       return;
     }
-    var player = gi.gameHelpers.spawnPlayer(clientId, c.client.team, c.account.display_name, c.account.authed);
+    var player = gi.gameHelpers.spawnPlayer(clientId, c.client.team, c.account.display_name, c.account.authed, c.account.flairIndex);
     sendToClient(clientId, { type: 'joinedGame', player: serializePlayer(player) });
     broadcastRoster();
     if (gi.gameState.state === 'pregame') gi.matchManager.startMatch();
@@ -427,16 +439,33 @@ function createHostSession(gi, deps) {
         if (clientRec.muted) { dispatch({ type: 'error', message: 'You are muted in this room.' }); return; }
         var text = typeof packet.text === 'string' ? packet.text.trim().slice(0, 240) : '';
         if (!text) return;
-        log('chat <' + accountRec.display_name + '> ' + text);
-        broadcastToAll(packetBuilders.chat({ id: clientId, name: accountRec.display_name, text: text }));
+        // Team-restricted requires an actual team to restrict to - a
+        // spectator has none, so their team key falls back to all-chat
+        // rather than silently going nowhere.
+        var target = (packet.target === 'team' && (clientRec.team === 'red' || clientRec.team === 'blue')) ? 'team' : 'all';
+        log('chat <' + accountRec.display_name + '> (' + target + ') ' + text);
+        var chatPacket = packetBuilders.chat({
+          id: clientId, name: accountRec.display_name, text: text, target: target,
+          team: clientRec.team, authed: accountRec.authed, leader: isLeader(clientId),
+        });
+        if (target === 'team') broadcastToTeam(clientRec.team, chatPacket);
+        else broadcastToAll(chatPacket);
         return;
       }
-      // A peer's one-time self-introduction. A freely-chosen display name
-      // applies immediately; a claimed TagPro identity only takes effect
-      // once verifyToken confirms it.
+      // A peer's one-time self-introduction (or, for flairIndex, a later
+      // live update - see local/flairPicker.js's selectFlair, which resends
+      // this same packet type with only that field set whenever the room
+      // is already joined). A freely-chosen display name applies
+      // immediately; a claimed TagPro identity only takes effect once
+      // verifyToken confirms it.
       case 'identify': {
         if (typeof packet.name === 'string' && packet.name.trim()) {
           accountRec.display_name = packet.name.trim().slice(0, 20);
+        }
+        if (typeof packet.flairIndex === 'number' || packet.flairIndex === null) {
+          accountRec.flairIndex = packet.flairIndex;
+          var flairPlayer = gi.gameState.getPlayer(clientId);
+          if (flairPlayer) { flairPlayer.flairIndex = packet.flairIndex; gi.emitter.emit('update', flairPlayer); }
         }
         broadcastRoster();
         if (packet.tagpro && packet.tagpro.token) {
@@ -602,7 +631,7 @@ function createHostSession(gi, deps) {
     var entry = {
       pc: pc, dc: null, clientId: clientId,
       client: { id: clientId, team: 'spectator', muted: false, leader: false },
-      account: { display_name: 'Player ' + clientId, authed: false },
+      account: { display_name: 'Player ' + clientId, authed: false, flairIndex: null },
       ready: false, lastSeenMs: Date.now(),
     };
     peers[peerId] = entry;

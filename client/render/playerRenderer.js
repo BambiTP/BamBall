@@ -21,7 +21,79 @@ const AURA_CONFIGS = {
   tp: particleConfigs.tagpro,
 };
 
+// The shared flair spritesheet (assets/sprites/flair.png - a real TagPro
+// flair sheet, see local/flairPicker.js) is packed on an 18px grid with a
+// 16px icon in each cell (2px of dead space, same convention TagPro's own
+// site CSS uses) - not a flat 16px grid, which would drift out of
+// alignment by one full icon every 8 columns.
+const FLAIR_PITCH = 18;
+const FLAIR_ICON_SIZE = 16;
+
 Object.assign(Renderer.prototype, {
+
+  // Loads the flair spritesheet once and slices it into one Texture per
+  // icon, flat-indexed row-major (index = row * cols + col) - the same
+  // indexing local/flairPicker.js's grid and localSettings.flairIndex use,
+  // so a player's flairIndex needs no separate (col,row) lookup table.
+  // Safe to call more than once - every caller shares the one promise.
+  ensureFlairSheet() {
+    if (this._flairSheetPromise) return this._flairSheetPromise;
+    this._flairSheetPromise = new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const cols = Math.floor(img.naturalWidth  / FLAIR_PITCH);
+        const rows = Math.floor(img.naturalHeight / FLAIR_PITCH);
+        const source = new PIXI.ImageSource({ resource: img });
+        this.flairFrames = [];
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            this.flairFrames.push(new PIXI.Texture({
+              source,
+              frame: new PIXI.Rectangle(col * FLAIR_PITCH, row * FLAIR_PITCH, FLAIR_ICON_SIZE, FLAIR_ICON_SIZE),
+            }));
+          }
+        }
+        resolve();
+      };
+      // Missing/failed asset: flairs just never render, same "degrade
+      // quietly" choice spriteAtlas.js's own onerror makes for a 404ing
+      // texture sheet - not worth failing the whole boot sequence over.
+      img.onerror = () => resolve();
+      img.src = GAME_BASE_PATH + 'assets/sprites/flair.png';
+    });
+    return this._flairSheetPromise;
+  },
+
+  // (Re)points a player's flair sprite at their current flairIndex -
+  // creates it, swaps its texture, or removes it as needed. Called once at
+  // creation (drawPlayer below) and again on a live change (client/app.js's
+  // player:flairChanged wiring).
+  updatePlayerFlair(playerId) {
+    const player = getPlayer(playerId);
+    if (!player?.sprites?.info) return;
+
+    if (player.flairIndex == null || !this.flairFrames?.[player.flairIndex]) {
+      if (player.sprites.flairBadge) {
+        player.sprites.info.removeChild(player.sprites.flairBadge);
+        player.sprites.flairBadge.destroy();
+        player.sprites.flairBadge = null;
+      }
+      return;
+    }
+
+    const tex = this.flairFrames[player.flairIndex];
+    if (player.sprites.flairBadge) {
+      player.sprites.flairBadge.texture = tex;
+      return;
+    }
+
+    const badge = new PIXI.Sprite(tex);
+    badge.anchor.set(0.5);
+    badge.position.set(0, -40); // centered above the name label (-28)
+    player.sprites.info.addChild(badge);
+    player.sprites.flairBadge = badge;
+  },
 
   drawPlayer(id) {
     const player = getPlayer(id);
@@ -57,14 +129,20 @@ Object.assign(Renderer.prototype, {
 
     // Name label - set once at creation since a player's name never
     // changes mid-life (a team switch kills and recreates the whole
-    // player, same as the ball's team color above).
+    // player, same as the ball's team color above). Styled to match real
+    // TagPro's own name rendering (tagpro.js's veryPrettyText): bold 11px
+    // Arial, black stroke, a soft drop shadow, and TagPro's own
+    // verified-account green (0xBFFF00) in place of white for an authed
+    // player - the same signal local/menu.js's roster rows already use.
     const nameText = new PIXI.Text({
       text: player.name,
       style: {
         fontFamily: 'Arial',
-        fontSize: 10,
-        fill: 0xffffff,
-        stroke: { color: 0x000000, width: 3 },
+        fontSize: 11,
+        fontWeight: 'bold',
+        fill: player.authed ? 0xbfff00 : 0xffffff,
+        stroke: { color: 0x000000, width: 2 },
+        dropShadow: { color: 0x000000, alpha: 0.8, angle: 0, blur: 3, distance: 0 },
         align: 'center',
       },
     });
@@ -93,6 +171,8 @@ Object.assign(Renderer.prototype, {
     player.sprites.auraLayer = auraLayer;
     player.sprites.selectionRing = selectionRing;
     player.sprites.nameText  = nameText;
+
+    this.updatePlayerFlair(player.id);
 
     return container;
   },
