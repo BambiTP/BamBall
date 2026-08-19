@@ -2,7 +2,7 @@
 // formula (shared/movement.js). This is the ONLY place the client computes
 // player acceleration - loop.js calls this, nothing else duplicates the math.
 
-// Mirrors the server's physicsHelpers.applyJumps (game/physicsHelpers.js) -
+// Mirrors the server's gravity.js applyJumps (engine/gravity.js) -
 // same edge-trigger-on-up, same charge consumption, same additive (not
 // overwritten) vy - so a jump fires the instant it's pressed instead of
 // waiting on the next snapshot. Runs before movePlayers each tick, same
@@ -63,7 +63,7 @@ function applyForceFields(players, wells) {
   }
 }
 
-// Mirrors the server's physicsHelpers.counterGravity - cancels world
+// Mirrors the server's gravity.js counterGravity - cancels world
 // gravity's contribution to THIS step for a dead or pregame player before
 // physicsWorld.step() integrates it, so prediction doesn't show them
 // sinking/drifting for a frame before the next server snapshot corrects it.

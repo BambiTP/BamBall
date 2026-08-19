@@ -57,7 +57,7 @@ var packetSchema = {
 
   // dirX/dirY: world-space vector from the carrier to wherever they clicked
   // (client/inputs.js) - need not be normalized, the server only
-  // cares about its direction (engine/eggballLogic.js's throwEggball).
+  // cares about its direction (engine/eggball.js's throwEggball).
   // Client-supplied like every movement input this game already trusts
   // (left/right/up/down), not derived server-side from velocity.
   throwEgg(dirX, dirY) {

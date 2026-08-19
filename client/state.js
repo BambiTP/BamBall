@@ -92,7 +92,7 @@ var game = {
   // dot can't survive the leader turning the mode off.
   kothPowerup: false,
 
-  // Eggball's one projectile (engine/eggballLogic.js's eggballChanged
+  // Eggball's one projectile (engine/eggball.js's eggballChanged
   // packets, seeded on 'joined'). carrierId set means render it at that
   // player's own position instead of x/y here - see client/render/
   // eggballRenderer.js.

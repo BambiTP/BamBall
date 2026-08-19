@@ -183,7 +183,7 @@ function initFireInput() {
 
     // Carrying the egg: a click throws it toward wherever was clicked
     // (server re-derives the actual direction from this vector, see
-    // engine/eggballLogic.js's throwEggball) instead of the leader-select/
+    // engine/eggball.js's throwEggball) instead of the leader-select/
     // camera-pan behavior below - actually playing takes priority over
     // those while holding it. No-op server-side if eggballEnabled is off
     // or this client isn't really the carrier (game.eggball.carrierId is

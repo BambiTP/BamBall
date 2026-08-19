@@ -28,7 +28,7 @@ class PhysicsWorld {
     this.world   = new b2World(new b2Vec2(config.gravityX, config.gravityY), true);
 
     // Box2D collision-filter category, given to every player body
-    // (playerLifecycle.js's spawnPlayer) - engine/eggballLogic.js's egg
+    // (playerLifecycle.js's spawnPlayer) - engine/eggball.js's egg
     // uses it to mask its solid fixture away from players specifically
     // (still bounces off walls/spikes for real, just never physically
     // bumps whoever's about to catch it - catching that fixture would
@@ -44,7 +44,7 @@ class PhysicsWorld {
       const dataB = contact.GetFixtureB().GetBody().GetUserData();
       if (!dataA || !dataB) return;
 
-      // The egg's body carries two fixtures (engine/eggballLogic.js's
+      // The egg's body carries two fixtures (engine/eggball.js's
       // makeEggballBody) - a solid one for wall/spike bounces and a
       // sensor, masked to players only, for catching - so either kind of
       // contact lands here the same way. Which one it was is passed
@@ -114,7 +114,7 @@ class PhysicsWorld {
     fixDef.restitution = options.restitution ?? this.config.restitution;
     // Defaults (categoryBits 0x0001, maskBits 0xFFFF - collide with
     // everything) match every existing caller's prior behavior exactly;
-    // only engine/eggballLogic.js's egg passes its own maskBits.
+    // only engine/eggball.js's egg passes its own maskBits.
     if (options.categoryBits !== undefined) fixDef.filter.categoryBits = options.categoryBits;
     if (options.maskBits     !== undefined) fixDef.filter.maskBits     = options.maskBits;
     body.CreateFixture(fixDef);
@@ -124,7 +124,7 @@ class PhysicsWorld {
 
   // A second, sensor-only fixture on an existing body - no collision
   // response (no bump, no bounce), just BeginContact/EndContact overlap
-  // events. engine/eggballLogic.js's egg uses this for player-catch
+  // events. engine/eggball.js's egg uses this for player-catch
   // detection alongside its own solid wall-bounce fixture from
   // createDynamicBody above; maskBits narrows which categories it even
   // bothers overlap-testing against (defaults to everything).

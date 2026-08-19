@@ -134,7 +134,7 @@ const packetBuilders = {
   // set means "render it at that player's own position, nothing else here
   // matters"; carrierId null + x/y/vx/vy means it's in free flight. Fired
   // on every state change (spawn/throw/catch/despawn) AND every physics
-  // tick while free-flying (engine/eggballLogic.js's syncEggball), so the
+  // tick while free-flying (engine/eggball.js's syncEggball), so the
   // client can extrapolate its motion the same way it already does for
   // players between updates.
   eggballChanged(egg) {

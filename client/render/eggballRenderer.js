@@ -1,6 +1,6 @@
 // eggballRenderer.js - draws Eggball's one projectile: a small yellow
 // circle (20px/0.25-tile radius, matching engine/gameConfig.js's
-// eggballRadius default - see engine/eggballLogic.js) attached to whoever's
+// eggballRadius default - see engine/eggball.js) attached to whoever's
 // carrying it, or free-flying in world space while thrown. Same
 // composition-over-Renderer.prototype pattern as playerRenderer.js.
 
@@ -28,7 +28,7 @@ Object.assign(Renderer.prototype, {
   // Called once per rendered frame (renderer.js's ticker) - game.eggball is
   // the last eggballChanged packet (see client/app.js),
   // snapped to directly rather than lerped: while thrown, the server
-  // broadcasts a fresh position every physics tick (engine/eggballLogic.js's
+  // broadcasts a fresh position every physics tick (engine/eggball.js's
   // syncEggball), fine-grained enough that interpolation isn't needed the
   // way it is for players (whose updates are comparatively sparse).
   updateEggball() {

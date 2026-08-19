@@ -8,9 +8,9 @@ var createTileHandlers = (typeof require === 'function') ? require('./tileHandle
 var POWERUP_TYPES      = (typeof require === 'function') ? require('./powerupTypes') : globalThis.PowerupTypes;
 
 var setupTileLogic = function setupTileLogic(instance) {
-  const { gameState, gameHelpers, physicsHelpers, config, emitter } = instance;
+  const { gameState, gameHelpers, physicsHelpers, gravityLogic, config, emitter } = instance;
 
-  const handlers = createTileHandlers(gameState, gameHelpers, physicsHelpers, config, emitter);
+  const handlers = createTileHandlers(gameState, gameHelpers, physicsHelpers, gravityLogic, config, emitter);
 
   // Captures count in pregame (warm-up), live, and overtime. Pregame
   // scores are wiped by startMatch's resetField, and the win-condition

@@ -52,7 +52,7 @@ class GameState {
     // (leaderManager.setTiles). gameHelpers.tileSetting is the read path.
     this.tileOverrides = {}; // "x,y" -> { boostCooldown: 5000, ... }
 
-    // Eggball mode's one projectile (engine/eggballLogic.js). carrierId set
+    // Eggball mode's one projectile (engine/eggball.js). carrierId set
     // means a player is holding it (its position is just that player's
     // position - the client renders it there, nothing here tracks a
     // separate x/y while held). body/x/y/vx/vy are only meaningful while
@@ -65,6 +65,8 @@ class GameState {
       body:           null,
       x: 0, y: 0, vx: 0, vy: 0,
       lastBounceStep: null,  // gameState.stepCount at the last wall bounce, or null
+      throwerId:      null,  // who threw the CURRENT flight, or null - engine/eggball.js's interception check
+      thrownAtStep:   null,  // gameState.stepCount at that throw, or null
     };
   }
 

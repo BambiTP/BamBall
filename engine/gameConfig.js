@@ -104,10 +104,10 @@ const gameConfig = {
   // every tick after that (walls can otherwise add energy back on a bounce,
   // this keeps it from running away). bounceBonusWindow is how long after a
   // wall bounce a score is still worth the 2x bonus (see engine/
-  // matchManager.js's scoreEggball). density/friction/restitution/damping
+  // eggball.js's scoreEggball). density/friction/restitution/damping
   // are its Box2D fixture/body properties - same knobs a leader already
   // has for the player ball itself, just this object's own copies (see
-  // engine/eggballLogic.js's makeEggballBody) so its bounciness/weight/
+  // engine/eggball.js's makeEggballBody) so its bounciness/weight/
   // spin can be tuned independently. No separate catch-radius setting -
   // catching is real collision with this same body/radius, not a distance
   // check - or a "respawn" delay (after a score the match's own
@@ -118,6 +118,11 @@ const gameConfig = {
   eggballThrowStrength:     12,
   eggballSpeed:             15,
   eggballBounceBonusWindow: 3000,
+  // How long after a throw an enemy catch still counts as an interception
+  // (see engine/eggball.js's catchEggball) - past this window a free-
+  // flying egg has just been "sitting on the ground" long enough that
+  // picking it up, enemy or not, is an ordinary catch, not a pick-off.
+  eggballInterceptWindow:   2000,
   eggballDensity:           1,
   eggballFriction:          0,
   eggballRestitution:       1,

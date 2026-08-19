@@ -3,11 +3,11 @@
 // behavior for one tile interaction. tileLogic.js is only allowed to do
 // name/team/state checks and then call exactly one of these.
 //
-// Trusted inputs only: gameState, gameHelpers, physicsHelpers, config,
-// emitter - all passed in by gameInstance. Handlers never require() anything
-// else.
+// Trusted inputs only: gameState, gameHelpers, physicsHelpers, gravityLogic,
+// config, emitter - all passed in by gameInstance. Handlers never require()
+// anything else.
 
-var createTileHandlers = function createTileHandlers(gameState, gameHelpers, physicsHelpers, config, emitter) {
+var createTileHandlers = function createTileHandlers(gameState, gameHelpers, physicsHelpers, gravityLogic, config, emitter) {
 
   // Runs `fn` once the current physics step has finished, via the same
   // microtask deferral gameHelpers.scheduleTileChange already uses (a
@@ -65,10 +65,12 @@ var createTileHandlers = function createTileHandlers(gameState, gameHelpers, phy
 
     // ---- gravity mode --------------------------------------------------------
 
-    // Plain property write, not a body mutation - safe to run inline from a
-    // contact callback (unlike popPlayer, this needs no afterStep defer).
+    // See engine/gravity.js's own resetJump for what this actually does -
+    // a plain property write, not a body mutation, so it's safe to run
+    // inline from a contact callback (unlike popPlayer, this needs no
+    // afterStep defer).
     resetJump(player) {
-      player.jumpsRemaining = config.jumpCharges;
+      gravityLogic.resetJump(player);
     },
 
     // ---- boosts ------------------------------------------------------------
@@ -201,16 +203,38 @@ var createTileHandlers = function createTileHandlers(gameState, gameHelpers, phy
 
     // ---- player vs player ----------------------------------------------------
 
+    // Every call site here is already guaranteed cross-team (tileLogic.js's
+    // handlePlayerPlayerBegin returns early on a same-team contact before
+    // any of these ever dispatch), so an eggball carrier popped through any
+    // of these was popped by an enemy - engine/eggball.js's
+    // transferEggballOnPop hands it straight to whoever did the popping
+    // instead of it dropping free for anyone to grab. Called before
+    // popPlayer so its own dropEggball(victim) sees hasEgg already false
+    // and no-ops.
+
     tagproPop(tagger, victim) {
-      afterStep(() => emitter.emit('update', gameHelpers.popPlayer(victim)));
+      afterStep(() => {
+        gameHelpers.transferEggballOnPop(victim, tagger);
+        emitter.emit('update', gameHelpers.popPlayer(victim));
+      });
     },
 
     flagTagPop(tagger, victim) {
-      afterStep(() => emitter.emit('update', gameHelpers.popPlayer(victim)));
+      afterStep(() => {
+        gameHelpers.transferEggballOnPop(victim, tagger);
+        emitter.emit('update', gameHelpers.popPlayer(victim));
+      });
     },
 
+    // Both die at once with no single "who popped whom" - whichever of the
+    // two happened to be carrying goes to the other, same as either
+    // one-sided pop above.
     mutualPop(a, b) {
-      afterStep(() => emitter.emit('update', [].concat(gameHelpers.popPlayer(a), gameHelpers.popPlayer(b))));
+      afterStep(() => {
+        gameHelpers.transferEggballOnPop(a, b);
+        gameHelpers.transferEggballOnPop(b, a);
+        emitter.emit('update', [].concat(gameHelpers.popPlayer(a), gameHelpers.popPlayer(b)));
+      });
     },
   };
 };

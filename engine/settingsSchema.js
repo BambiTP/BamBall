@@ -139,7 +139,7 @@ const PHYSICS_SCHEMA = [
   // despawns the egg immediately on flip, same live-effect pattern as
   // gravity/gravityWells above, instead of only taking effect on the next
   // match start. No separate catch-radius setting - catching is real
-  // Box2D collision with the egg's own body (engine/eggballLogic.js's
+  // Box2D collision with the egg's own body (engine/eggball.js's
   // catchEggball), so eggballRadius doubles as the catch distance. See
   // engine/gameConfig.js for what each of the keys below actually controls.
   { key: 'eggballEnabled',           scope: 'physics', type: 'bool',   category: 'Eggball', hooks: ['eggballToggle'] },
@@ -147,6 +147,7 @@ const PHYSICS_SCHEMA = [
   { key: 'eggballThrowStrength',     scope: 'physics', type: 'number', category: 'Eggball', unit: 'tiles/s' },
   { key: 'eggballSpeed',             scope: 'physics', type: 'number', category: 'Eggball', unit: 'tiles/s' },
   { key: 'eggballBounceBonusWindow', scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball', scale: 1000, unit: 's' },
+  { key: 'eggballInterceptWindow',   scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball', scale: 1000, unit: 's' },
   { key: 'eggballDensity',           scope: 'physics', type: 'number', category: 'Eggball' },
   { key: 'eggballFriction',          scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball' },
   { key: 'eggballRestitution',       scope: 'physics', type: 'number', zeroOk: true, category: 'Eggball' },

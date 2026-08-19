@@ -1,6 +1,7 @@
 (function () {
 const { validateSettings } = (typeof require === 'function') ? require('./matchSettings') : globalThis.MatchSettings;
 const { SCHEMA, SCHEMA_BY_KEY, coerce, applyPartial } = (typeof require === 'function') ? require('./settingsSchema') : globalThis.SettingsSchema;
+const Eggball = (typeof require === 'function') ? require('./eggball') : globalThis.Eggball;
 
 const STEP_MS = 1000 / 60;
 
@@ -691,47 +692,18 @@ var createMatchManager = function(gameState, gameHelpers, physicsWorld, config, 
   // the emitter - same reasoning flagCapture's separate 'capture' emit
   // already follows). Unlike a normal flag capture, a score here also
   // freezes and respawns everyone after a countdown, and hands the egg to
-  // whichever team just got scored on for the next round - none of which a
-  // plain win-condition check does, so this can't just reuse that listener.
-  function scoreEggball(player) {
-    if (gameState.mode === 'editor') return;
-
-    const scoringTeam = player.team;
-    const losingTeam  = scoringTeam === 'red' ? 'blue' : 'red';
-    const bonus       = gameHelpers.eggballBounceBonusActive();
-
-    gameHelpers.despawnEggball();
-
-    gameState.scores[scoringTeam] += bonus ? 2 : 1;
-    emitter.emit('score', gameState.scores);
-    emitter.emit('update', player);
-
-    // May end the match outright (score limit / mercy / overtime sudden
-    // death) - checkCaptureWinConditions calls endMatch() itself in that
-    // case, which already freezes everyone and stops all momentum, so the
-    // countdown/respawn/next-carrier steps below must not also run.
-    checkCaptureWinConditions(player);
-    if (gameState.state === 'ended') return;
-
-    respawnAll();
-
-    // The freeze+countdown only applies mid-match - tick()'s own countdown
-    // handling always resolves BACK to 'live' once countdownDuration
-    // elapses (it has no notion of "which state this countdown started
-    // from"), so running it during pregame warm-up would incorrectly snap
-    // a not-yet-started room into 'live'. A pregame score still respawns
-    // everyone above, just without the freeze/countdown ceremony.
-    if (gameState.state === 'live') {
-      freezeAll(true);
-      gameState.state          = 'countdown';
-      gameState.phaseStartStep = gameState.stepCount;
-      emitter.emit('matchStateChanged');
-    }
-
-    gameHelpers.spawnEggball(losingTeam);
-  }
-
-  emitter.on('eggballScore', scoreEggball);
+  // whichever team just got scored on for the next round - the whole
+  // process now lives in engine/eggball.js's own scoreEggball, since it's
+  // Eggball-mode behavior, not match-lifecycle machinery; this just wires
+  // it up with the match-lifecycle pieces (win conditions, respawn,
+  // freeze) it needs but doesn't own itself.
+  emitter.on('eggballScore', function (player) {
+    Eggball.scoreEggball(player, gameHelpers, gameState, emitter, {
+      checkCaptureWinConditions: checkCaptureWinConditions,
+      respawnAll: respawnAll,
+      freezeAll: freezeAll,
+    });
+  });
 
   // ---- save states ------------------------------------------------------
   // In-memory only, keyed by leader-chosen name, scoped to this room's

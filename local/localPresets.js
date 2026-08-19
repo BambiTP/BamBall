@@ -30,10 +30,15 @@ function defaultPhysicsBundle() {
   return bundle;
 }
 
-// Gravity/Eggball are placeholder tunings pending real numbers - both
-// start from the exact same defaults as Standard and only override the
-// couple of keys their name implies, so they're always at least a valid,
-// playable configuration in the meantime.
+// Gravity/Eggball start from the exact same defaults as Standard, with
+// engine/gravity.js's Gravity.MODE_SETTINGS / engine/eggball.js's
+// Eggball.MODE_SETTINGS laid on top - THOSE files, not this one, are the
+// single canonical definition of everything each mode needs (every
+// gravity-adjacent key, every eggball physics knob, and each mode
+// explicitly turning the other's toggle off). This function's only job is
+// pairing that physics bundle with a map - a content decision, not a
+// physics rule, which is why it stays here instead of in gravity.js/
+// eggball.js (see those files' own header comments).
 function seedDefaultPresets() {
   var standardPhysics = defaultPhysicsBundle();
   var standardMatch = Object.assign({}, settingsState.matchSettingsDefaults);
@@ -44,15 +49,20 @@ function seedDefaultPresets() {
       id: 'gravity',
       name: 'Gravity',
       settings: {
-        physics: Object.assign({}, standardPhysics, { gravityY: 15 }),
+        physics: Object.assign({}, standardPhysics, Gravity.MODE_SETTINGS),
         match: standardMatch,
+        // No curated Fortunate Maps id exists for Gravity the way Eggball
+        // has EGGBALL_MAP_ID below - world gravity + jump charges (and any
+        // GravityWell tiles the CURRENT map happens to have) work on
+        // whatever map is already loaded, so this deliberately leaves it
+        // alone rather than guessing at an id.
       },
     },
     {
       id: 'eggball',
       name: 'Eggball',
       settings: {
-        physics: Object.assign({}, standardPhysics, { eggballEnabled: true }),
+        physics: Object.assign({}, standardPhysics, Eggball.MODE_SETTINGS),
         match: standardMatch,
         // local/defaultMaps.js's EGGBALL_MAP_ID - most CTF maps have no
         // RedGoal/BlueGoal tiles at all, so the mode needs its own map to

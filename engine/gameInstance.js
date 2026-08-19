@@ -7,6 +7,7 @@ var GameState     = (typeof require === 'function') ? require('./gameState') : g
 var physicsData   = (typeof require === 'function') ? require('./tiles/physicsData') : globalThis.PhysicsData;
 const { TILE_ID }   = physicsData;
 var createPhysicsHelpers = (typeof require === 'function') ? require('./physicsHelpers') : globalThis.createPhysicsHelpers;
+var Gravity = (typeof require === 'function') ? require('./gravity') : globalThis.Gravity;
 var createGameHelpers    = (typeof require === 'function') ? require('./gameHelpers') : globalThis.createGameHelpers;
 var createSnapshotFactory = (typeof require === 'function') ? require('./snapshotFactory') : globalThis.createSnapshotFactory;
 var setupTileLogic       = (typeof require === 'function') ? require('./tiles/tileLogic') : globalThis.setupTileLogic;
@@ -35,6 +36,7 @@ class GameInstance {
     this.gameState     = new GameState(mode);
     this.physicsWorld  = new PhysicsWorld(config, this.emitter);
     this.physicsHelpers = createPhysicsHelpers(this.physicsWorld, this.gameState, config);
+    this.gravityLogic   = Gravity.createGravityLogic(this.gameState, this.physicsWorld, config);
     this.gameHelpers    = createGameHelpers(this.gameState, this.physicsHelpers, this.physicsWorld, config, this.emitter);
     this.snapshotFactory = createSnapshotFactory(this.gameState, config);
     this.matchManager   = createMatchManager(this.gameState, this.gameHelpers, this.physicsWorld, config, this.emitter, this.physicsLookup);
@@ -625,10 +627,10 @@ class GameInstance {
     if (this.gameState.state === 'paused') return;
 
     this.gameState.stepCount++;
-    this.physicsHelpers.applyJumps();
+    this.gravityLogic.applyJumps();
     this.physicsHelpers.movePlayers();
     this.physicsHelpers.applyForceFields();
-    this.physicsHelpers.counterGravity();
+    this.gravityLogic.counterGravity();
     this.physicsWorld.step(this.timeStep);
     this.physicsHelpers.syncPlayers();
     this.gameHelpers.syncEggball();
