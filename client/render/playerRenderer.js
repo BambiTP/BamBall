@@ -21,11 +21,14 @@ const AURA_CONFIGS = {
   tp: particleConfigs.tagpro,
 };
 
-// The shared flair spritesheet (assets/sprites/flair.png - a real TagPro
-// flair sheet, see local/flairPicker.js) is packed on an 18px grid with a
-// 16px icon in each cell (2px of dead space, same convention TagPro's own
-// site CSS uses) - not a flat 16px grid, which would drift out of
-// alignment by one full icon every 8 columns.
+// The shared flair spritesheet (assets/sprites/flair.png) is the real
+// sheet pulled straight from tagpro.koalabeast.com's own site
+// (.../images/flair.png, 234x360) - packed on an 18px grid with a 16px
+// icon in each cell (2px gutter), matching that site's own stylesheet
+// (--flair-pitch: 18px). 234/18 and 360/18 both divide evenly (13 cols x
+// 20 rows, 260 icons) - confirms this pitch, unlike the smaller
+// BambiTP/Tagpro-Next placeholder sheet this replaced, which was a tight
+// 16px grid with no gutter at all.
 const FLAIR_PITCH = 18;
 const FLAIR_ICON_SIZE = 16;
 
@@ -90,7 +93,9 @@ Object.assign(Renderer.prototype, {
 
     const badge = new PIXI.Sprite(tex);
     badge.anchor.set(0.5);
-    badge.position.set(0, -40); // centered above the name label (-28)
+    // Centered above the name label (which sits bottom-anchored at -28,
+    // ~15px tall) with enough clearance that the two don't overlap.
+    badge.position.set(0, -48);
     player.sprites.info.addChild(badge);
     player.sprites.flairBadge = badge;
   },
